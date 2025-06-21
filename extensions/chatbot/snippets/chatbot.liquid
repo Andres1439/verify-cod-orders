@@ -1,0 +1,106 @@
+{% comment %}
+  Este snippet contiene la lógica del chatbot y recibe los ajustes desde el bloque.
+{% endcomment %}
+
+<link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
+
+{{ 'chatbot.css' | asset_url | stylesheet_tag }}
+
+<script type="module">
+  import { createChat } from "https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js";
+
+  async function fetchChatbotConfiguration(shopDomain) {
+    // ✅ URL corregida para usar la ruta proxy
+    const apiUrl = `https://dress-cleaners-coral-luke.trycloudflare.com/proxy/api/chatbot-config?shop=${shopDomain}`;
+    
+    console.log("🔍 Intentando acceder a:", apiUrl);
+    
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      console.log("📡 Status de respuesta:", response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ Error de respuesta:", errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log("✅ Datos recibidos:", data);
+      return data;
+      
+    } catch (error) {
+      console.error("💥 Error completo:", error);
+      // ✅ Configuración de fallback que SIEMPRE permite el chatbot
+      return {
+        bot_name: "Verify",
+        welcome_message: "¡Hola! ¿En qué puedo ayudarte?",
+        is_active: true // ✅ Siempre activo en caso de error
+      };
+    }
+  }
+  
+  async function initializeChatbot() {
+    // 1. Obtenemos todos los datos que necesitamos
+    const shopDomain = '{{ shop.permanent_domain }}';
+    const config = await fetchChatbotConfiguration(shopDomain);
+    const theme = '{{ theme_setting }}';
+    const position = '{{ position_setting }}';
+
+    console.log("🤖 Configuración del chatbot:", config);
+    console.log("🎨 Tema:", theme);
+    console.log("📍 Posición:", position);
+
+    // Si la configuración desde la base de datos dice que el bot está inactivo,
+    // detenemos la ejecución y no creamos el chatbot.
+    if (!config.is_active) {
+      console.log("Verify App: Chatbot está inactivo según la configuración. No se mostrará.");
+      return;
+    }
+
+    console.log("🚀 Inicializando chatbot...");
+
+    // 2. Si está activo, inicializamos el chatbot
+    createChat({
+      webhookUrl: "https://verify-test.app.n8n.cloud/webhook/afc49feb-3869-4849-9ccc-41d6909933a6/chat",
+      initialMessages: [config.welcome_message || "¡Hola! Estoy aquí para ayudarte."],
+      customData: {
+        shopDomain: shopDomain
+      },
+      i18n: {
+        en: {
+          title: config.bot_name || "Verify",
+          subtitle: "Comienza un chat, nosotros te ayudamos.",
+          inputPlaceholder: "Escríbenos un mensaje...",
+        },
+      },
+    });
+
+    console.log("✅ Chatbot inicializado correctamente");
+
+    // 3. Aplicamos los estilos de tema y posición
+    setTimeout(() => {
+      const chatWindow = document.querySelector('.chat-window');
+      if (chatWindow) {
+        console.log("🎨 Aplicando estilos:", { theme, position });
+        if (theme === 'dark') {
+          chatWindow.classList.add('dark');
+        }
+        chatWindow.classList.add(position);
+      }
+    }, 100);
+  }
+
+  // Inicializar cuando la página esté lista
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeChatbot);
+  } else {
+    initializeChatbot();
+  }
+</script>
