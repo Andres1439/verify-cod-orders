@@ -1,0 +1,49 @@
+{% comment %}
+  Este es el bloque que el comerciante añade en el editor de temas.
+{% endcomment %}
+
+{% if block.settings.chatbot_enabled %}
+  {% comment %}
+    Llamamos al snippet 'chatbot' y le pasamos los ajustes del bloque
+    como variables para que pueda usarlas.
+  {% endcomment %}
+  {% render 'chatbot', 
+    theme_setting: block.settings.chatbot_theme, 
+    position_setting: block.settings.chatbot_position 
+  %}
+{% endif %}
+
+{% schema %}
+  {
+    "name": "Chatbot (Verify App)",
+    "target": "section",
+    "settings": [
+      {
+        "type": "checkbox",
+        "id": "chatbot_enabled",
+        "label": "Habilitar Chatbot",
+        "default": true
+      },
+      {
+        "type": "select",
+        "id": "chatbot_position",
+        "label": "Posición del Chatbot",
+        "options": [
+          { "label": "Inferior Derecha", "value": "bottom-right" },
+          { "label": "Inferior Izquierda", "value": "bottom-left" }
+        ],
+        "default": "bottom-right"
+      },
+      {
+        "type": "select",
+        "id": "chatbot_theme",
+        "label": "Tema del Chatbot",
+        "options": [
+          { "label": "Claro", "value": "light" },
+          { "label": "Oscuro", "value": "dark" }
+        ],
+        "default": "light"
+      }
+    ]
+  }
+{% endschema %}
