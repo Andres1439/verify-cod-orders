@@ -391,13 +391,6 @@
   left: auto !important;
 }
 
-.chat-window.dark {
-  /* Agrega aquí los estilos para el tema oscuro si la librería de n8n chat los soporta o si quieres sobrescribirlos */
-  /* Por ejemplo: */
-  /* background-color: #1a1a1a !important; */
-  /* color: #ffffff !important; */
-}
-
 /* === RESPONSIVE MEJORADO PARA POSICIONAMIENTO === */
 @media (max-width: 768px) {
   .chat-window {
