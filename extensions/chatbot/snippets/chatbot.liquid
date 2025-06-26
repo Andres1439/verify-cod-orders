@@ -70,7 +70,7 @@
     createChat({
       webhookUrl: "https://verify-test.app.n8n.cloud/webhook/afc49feb-3869-4849-9ccc-41d6909933a6/chat",
       initialMessages: [config.welcome_message || "¡Hola! Estoy aquí para ayudarte."],
-      customData: {
+      metadata: {  // ✅ CAMBIO: customData → metadata
         shopDomain: shopDomain
       },
       i18n: {
