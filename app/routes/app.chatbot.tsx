@@ -1,6 +1,6 @@
-// app.chatbot
+// app/routes/app.chatbot.tsx (CORREGIDO)
 import type { ActionFunctionArgs } from "@remix-run/node";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { TitleBar } from "@shopify/app-bridge-react";
 import {
   Page,
@@ -26,14 +26,17 @@ import {
   ChatIcon,
 } from "@shopify/polaris-icons";
 import { json } from "@remix-run/node";
-import { useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
+import {
+  useLoaderData,
+  useNavigation,
+  useSubmit,
+  useActionData,
+} from "@remix-run/react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
 /*
  * Loader para obtener datos iniciales
- * Simula una API con datos de configuración del chatbot,
- * métricas y tickets
  */
 export const loader = async ({ request }: { request: Request }) => {
   const { session } = await authenticate.admin(request);
@@ -106,6 +109,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const action = formData.get("action");
 
+  console.log("🔧 Action recibida:", action);
+
   // Obtener la tienda
   const shop = await db.shop.findUnique({
     where: {
@@ -114,60 +119,100 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   });
 
   if (!shop) {
-    return json({ error: "Tienda no encontrada" }, { status: 404 });
+    console.log("❌ Tienda no encontrada:", session.shop);
+    return json(
+      { success: false, error: "Tienda no encontrada" },
+      { status: 404 },
+    );
   }
+
+  console.log("✅ Tienda encontrada:", shop.id);
 
   if (action === "updateChatbotConfig") {
     const botName = formData.get("botName") ?? "";
     const welcomeMessage = formData.get("welcomeMessage") ?? "";
     const isActive = formData.get("isActive") === "true";
 
-    // Actualizar o crear la configuración del chatbot
-    const chatbotConfig = await db.chatbotConfiguration.upsert({
-      where: {
-        shop_id: shop.id,
-      },
-      update: {
-        bot_name: typeof botName === "string" ? botName : "",
-        welcome_message:
-          typeof welcomeMessage === "string" ? welcomeMessage : "",
-        is_active: isActive,
-      },
-      create: {
-        shop_id: shop.id,
-        bot_name: typeof botName === "string" ? botName : "",
-        welcome_message:
-          typeof welcomeMessage === "string" ? welcomeMessage : "",
-        is_active: isActive,
-      },
+    console.log("💾 Guardando configuración:", {
+      botName,
+      welcomeMessage: welcomeMessage.toString().substring(0, 50) + "...",
+      isActive,
     });
 
-    return json({ success: true, chatbotConfig });
+    try {
+      // Actualizar o crear la configuración del chatbot
+      const chatbotConfig = await db.chatbotConfiguration.upsert({
+        where: {
+          shop_id: shop.id,
+        },
+        update: {
+          bot_name: typeof botName === "string" ? botName : "",
+          welcome_message:
+            typeof welcomeMessage === "string" ? welcomeMessage : "",
+          is_active: isActive,
+          updated_at: new Date(),
+        },
+        create: {
+          shop_id: shop.id,
+          bot_name: typeof botName === "string" ? botName : "",
+          welcome_message:
+            typeof welcomeMessage === "string" ? welcomeMessage : "",
+          is_active: isActive,
+        },
+      });
+
+      console.log("✅ Configuración guardada:", chatbotConfig.id);
+
+      return json({
+        success: true,
+        chatbotConfig,
+        message: "Configuración guardada exitosamente",
+      });
+    } catch (error) {
+      console.error("💥 Error al guardar configuración:", error);
+      return json({
+        success: false,
+        error: "Error al guardar la configuración",
+      });
+    }
   }
 
-  const ticketId = formData.get("ticketId");
-  const newStatus = formData.get("status");
+  if (action === "updateTicketStatus") {
+    const ticketId = formData.get("ticketId");
+    const newStatus = formData.get("status");
 
-  // Import the TicketStatus enum from your Prisma client
-  // import type { TicketStatus } from "@prisma/client";
-  // If not already imported, add the import at the top of your file:
-  // import type { TicketStatus } from "@prisma/client";
-  // (Uncomment the above line and ensure @prisma/client is installed)
+    if (typeof ticketId === "string" && typeof newStatus === "string") {
+      try {
+        await db.ticket.update({
+          where: {
+            id: ticketId,
+            shop_id: shop.id, // Verificar que el ticket pertenece a la tienda
+          },
+          data: {
+            status: newStatus as any,
+            updated_at: new Date(),
+          },
+        });
 
-  if (typeof ticketId === "string" && typeof newStatus === "string") {
-    // Cast newStatus to TicketStatus enum
-    await db.ticket.update({
-      where: { id: ticketId },
-      data: { status: newStatus as any }, // Preferably: as TicketStatus
-    });
+        return json({
+          success: true,
+          message: "Estado del ticket actualizado",
+        });
+      } catch (error) {
+        console.error("💥 Error al actualizar ticket:", error);
+        return json({
+          success: false,
+          error: "Error al actualizar el ticket",
+        });
+      }
+    }
   }
 
-  return json({ success: true });
+  return json({ success: false, error: "Acción no válida" });
 };
 
 /*
  * Componente principal de la página del chatbot
- * Maneja la interfaz de usuario y la lógica del chatbot
  */
 type LoaderData = {
   chatbotConfig: {
@@ -190,6 +235,7 @@ export default function ChatbotPage() {
   const { chatbotConfig, tickets } = useLoaderData<LoaderData>();
   const navigation = useNavigation();
   const submit = useSubmit();
+  const actionData = useActionData<any>();
 
   // Estados del componente
   const [activeTab, setActiveTab] = useState(0);
@@ -199,8 +245,6 @@ export default function ChatbotPage() {
     is_active: chatbotConfig.is_active ?? true,
   });
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState({ type: "", text: "" });
 
   const tabs = [
     {
@@ -215,9 +259,9 @@ export default function ChatbotPage() {
     },
   ];
 
-  const handleSaveConfig = async () => {
-    setIsSaving(true);
-    setSaveMessage({ type: "", text: "" });
+  // ✅ CORRECIÓN: Función de guardado simplificada
+  const handleSaveConfig = () => {
+    console.log("💾 Enviando configuración:", config);
 
     const formData = new FormData();
     formData.append("action", "updateChatbotConfig");
@@ -225,21 +269,17 @@ export default function ChatbotPage() {
     formData.append("welcomeMessage", config.welcome_message);
     formData.append("isActive", config.is_active.toString());
 
-    try {
-      await submit(formData, { method: "post" });
-      setSaveMessage({
-        type: "success",
-        text: "Configuración guardada exitosamente",
-      });
-    } catch (error) {
-      setSaveMessage({
-        type: "error",
-        text: "Error al guardar la configuración",
-      });
-    } finally {
-      setIsSaving(false);
-    }
+    submit(formData, { method: "post" });
   };
+
+  // ✅ Actualizar el estado local cuando se recarga la página
+  useEffect(() => {
+    setConfig({
+      bot_name: chatbotConfig.bot_name || "",
+      welcome_message: chatbotConfig.welcome_message || "",
+      is_active: chatbotConfig.is_active ?? true,
+    });
+  }, [chatbotConfig]);
 
   const toggleBotStatus = () => {
     setConfig((prevConfig) => ({
@@ -271,6 +311,7 @@ export default function ChatbotPage() {
 
   const updateTicketStatus = (ticketId: string, newStatus: string) => {
     const formData = new FormData();
+    formData.append("action", "updateTicketStatus");
     formData.append("ticketId", ticketId);
     formData.append("status", newStatus);
     submit(formData, { method: "post" });
@@ -282,6 +323,11 @@ export default function ChatbotPage() {
       ticket.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.reason.toLowerCase().includes(searchQuery.toLowerCase()),
   );
+
+  // ✅ Estado de guardado basado en navigation
+  const isSaving =
+    navigation.state === "submitting" &&
+    navigation.formData?.get("action") === "updateChatbotConfig";
 
   return (
     <Page
@@ -312,13 +358,16 @@ export default function ChatbotPage() {
                     </p>
                   </Banner>
 
-                  {saveMessage.text && (
-                    <Banner
-                      tone={
-                        saveMessage.type === "success" ? "success" : "critical"
-                      }
-                    >
-                      <p>{saveMessage.text}</p>
+                  {/* ✅ Mensajes de resultado mejorados */}
+                  {actionData?.success && (
+                    <Banner tone="success">
+                      <p>{actionData.message || "Operación exitosa"}</p>
+                    </Banner>
+                  )}
+
+                  {actionData?.error && (
+                    <Banner tone="critical">
+                      <p>{actionData.error}</p>
                     </Banner>
                   )}
 
@@ -331,6 +380,7 @@ export default function ChatbotPage() {
                           setConfig((prev) => ({ ...prev, bot_name: value }))
                         }
                         autoComplete="off"
+                        helpText="Este nombre aparecerá en el título del chatbot"
                       />
                       <TextField
                         label="Mensaje de bienvenida"
@@ -343,6 +393,7 @@ export default function ChatbotPage() {
                         }
                         multiline={4}
                         autoComplete="off"
+                        helpText="Este será el primer mensaje que vean tus clientes"
                       />
                       <Button
                         variant="primary"
@@ -368,31 +419,38 @@ export default function ChatbotPage() {
                           Ver todos los tickets
                         </Button>
                       </InlineStack>
-                      <DataTable
-                        columnContentTypes={[
-                          "text",
-                          "text",
-                          "text",
-                          "text",
-                          "text",
-                        ]}
-                        headings={[
-                          "ID",
-                          "Cliente",
-                          "Motivo",
-                          "Fecha",
-                          "Estado",
-                        ]}
-                        rows={tickets
-                          .slice(0, 3)
-                          .map((ticket) => [
-                            ticket.id,
-                            ticket.customer,
-                            ticket.reason,
-                            ticket.date,
-                            getStatusBadge(ticket.status, ticket.id),
-                          ])}
-                      />
+                      {tickets.length === 0 ? (
+                        <Text as="p" tone="subdued">
+                          No hay tickets aún. Los tickets aparecerán cuando los
+                          clientes usen el chatbot.
+                        </Text>
+                      ) : (
+                        <DataTable
+                          columnContentTypes={[
+                            "text",
+                            "text",
+                            "text",
+                            "text",
+                            "text",
+                          ]}
+                          headings={[
+                            "ID",
+                            "Cliente",
+                            "Motivo",
+                            "Fecha",
+                            "Estado",
+                          ]}
+                          rows={tickets
+                            .slice(0, 3)
+                            .map((ticket) => [
+                              ticket.id.substring(0, 8) + "...",
+                              ticket.customer,
+                              ticket.reason,
+                              ticket.date,
+                              getStatusBadge(ticket.status, ticket.id),
+                            ])}
+                        />
+                      )}
                     </BlockStack>
                   </Card>
                 </BlockStack>
@@ -439,6 +497,7 @@ export default function ChatbotPage() {
                         "text",
                         "text",
                         "text",
+                        "text",
                       ]}
                       headings={[
                         "ID",
@@ -449,7 +508,7 @@ export default function ChatbotPage() {
                         "Estado",
                       ]}
                       rows={filteredTickets.map((ticket) => [
-                        ticket.id,
+                        ticket.id.substring(0, 8) + "...",
                         ticket.customer,
                         ticket.email,
                         ticket.reason,

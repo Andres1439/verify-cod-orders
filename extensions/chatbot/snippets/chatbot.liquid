@@ -1,5 +1,5 @@
 {% comment %}
-  Este snippet contiene la lógica del chatbot y recibe los ajustes desde el bloque.
+  Snippet para desarrollo local
 {% endcomment %}
 
 <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
@@ -10,97 +10,128 @@
   import { createChat } from "https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js";
 
   async function fetchChatbotConfiguration(shopDomain) {
-    // ✅ URL corregida para usar la ruta proxy
-    const apiUrl = `https://dress-cleaners-coral-luke.trycloudflare.com/proxy/api/chatbot-config?shop=${shopDomain}`;
+    // ✅ URL actual de Cloudflare
+    const apiUrls = [
+      `https://corruption-perl-employee-boc.trycloudflare.com/api/chatbot-config?shop=${shopDomain}`,
+      `http://localhost:3000/api/chatbot-config?shop=${shopDomain}`, // fallback local
+    ];
     
-    console.log("🔍 Intentando acceder a:", apiUrl);
+    console.log("🔍 Shop domain:", shopDomain);
     
-    try {
-      const response = await fetch(apiUrl, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      console.log("📡 Status de respuesta:", response.status);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ Error de respuesta:", errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+    for (const apiUrl of apiUrls) {
+      try {
+        console.log("🔗 Probando URL:", apiUrl);
+        
+        const response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          cache: 'no-cache'
+        });
+        
+        console.log("📡 Status:", response.status, "para", apiUrl);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log("✅ Configuración obtenida desde:", apiUrl);
+          console.log("📋 Datos:", data);
+          return data;
+        }
+        
+      } catch (error) {
+        console.log("❌ Error con", apiUrl, ":", error.message);
+        continue; // Probar siguiente URL
       }
-      
-      const data = await response.json();
-      console.log("✅ Datos recibidos:", data);
-      return data;
-      
-    } catch (error) {
-      console.error("💥 Error completo:", error);
-      // ✅ Configuración de fallback que SIEMPRE permite el chatbot
-      return {
-        bot_name: "Verify",
-        welcome_message: "¡Hola! ¿En qué puedo ayudarte?",
-        is_active: true // ✅ Siempre activo en caso de error
-      };
     }
+    
+    // Si ninguna URL funciona, usar fallback
+    console.log("🔄 Todas las URLs fallaron, usando configuración local");
+    return {
+      bot_name: "Verify (Local)",
+      welcome_message: "¡Hola! Configuración local activa",
+      is_active: true
+    };
   }
   
   async function initializeChatbot() {
-    // 1. Obtenemos todos los datos que necesitamos
     const shopDomain = '{{ shop.permanent_domain }}';
+    
+    console.log("🚀 =================================");
+    console.log("🚀 INICIANDO CHATBOT");
+    console.log("🚀 Shop:", shopDomain);
+    console.log("🚀 =================================");
+    
+    // Obtener configuración
     const config = await fetchChatbotConfiguration(shopDomain);
-    const theme = '{{ theme_setting }}';
-    const position = '{{ position_setting }}';
+    
+    console.log("🤖 Configuración final:", config);
 
-    console.log("🤖 Configuración del chatbot:", config);
-    console.log("🎨 Tema:", theme);
-    console.log("📍 Posición:", position);
-
-    // Si la configuración desde la base de datos dice que el bot está inactivo,
-    // detenemos la ejecución y no creamos el chatbot.
+    // Verificar si está activo
     if (!config.is_active) {
-      console.log("Verify App: Chatbot está inactivo según la configuración. No se mostrará.");
+      console.log("⏸️ Chatbot inactivo");
       return;
     }
 
-    console.log("🚀 Inicializando chatbot...");
+    console.log("✅ Creando chatbot...");
 
-    // 2. Si está activo, inicializamos el chatbot
-    createChat({
-      webhookUrl: "https://verify-test.app.n8n.cloud/webhook/afc49feb-3869-4849-9ccc-41d6909933a6/chat",
-      initialMessages: [config.welcome_message || "¡Hola! Estoy aquí para ayudarte."],
-      metadata: {  // ✅ CAMBIO: customData → metadata
-        shopDomain: shopDomain
-      },
-      i18n: {
-        en: {
-          title: config.bot_name || "Verify",
-          subtitle: "Comienza un chat, nosotros te ayudamos.",
-          inputPlaceholder: "Escríbenos un mensaje...",
+    // Crear chatbot
+    try {
+      createChat({
+        webhookUrl: "https://verify-test.app.n8n.cloud/webhook/afc49feb-3869-4849-9ccc-41d6909933a6/chat",
+        initialMessages: [config.welcome_message || "¡Hola! ¿En qué puedo ayudarte?"],
+        metadata: {
+          shopDomain: shopDomain
         },
-      },
-    });
+        i18n: {
+          en: {
+            title: config.bot_name || "Verify",
+            subtitle: "Comienza un chat, nosotros te ayudamos.",
+            inputPlaceholder: "Escríbenos un mensaje...",
+          },
+        },
+      });
+      
+      console.log("✅ Chatbot creado exitosamente");
+      
+    } catch (chatError) {
+      console.error("💥 Error al crear chatbot:", chatError);
+    }
 
-    console.log("✅ Chatbot inicializado correctamente");
-
-    // 3. Aplicamos los estilos de tema y posición
+    // Verificar elementos
     setTimeout(() => {
-      const chatWindow = document.querySelector('.chat-window');
-      if (chatWindow) {
-        console.log("🎨 Aplicando estilos:", { theme, position });
-        if (theme === 'dark') {
-          chatWindow.classList.add('dark');
-        }
-        chatWindow.classList.add(position);
+      const chatElement = document.querySelector('.chat-window') || 
+                         document.querySelector('*[class*="chat"]');
+      
+      if (chatElement) {
+        console.log("✅ Elemento del chat encontrado:", chatElement);
+      } else {
+        console.log("❌ No se encontró elemento del chat");
+        console.log("🔍 Todos los elementos:", document.querySelectorAll('*').length);
       }
-    }, 100);
+    }, 2000);
   }
 
-  // Inicializar cuando la página esté lista
+  // Debug functions
+  window.debugChatbot = {
+    test: () => fetchChatbotConfiguration('{{ shop.permanent_domain }}'),
+    reload: initializeChatbot,
+    checkElements: () => {
+      return {
+        chatWindow: document.querySelector('.chat-window'),
+        anyChat: document.querySelector('*[class*="chat"]'),
+        scripts: document.querySelectorAll('script[src*="n8n"]'),
+        totalElements: document.querySelectorAll('*').length
+      };
+    }
+  };
+
+  // Inicializar
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initializeChatbot);
   } else {
     initializeChatbot();
   }
+
+  console.log("📝 Script cargado - Debug disponible en window.debugChatbot");
 </script>
