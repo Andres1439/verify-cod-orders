@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // app/routes/webhooks.tsx
 
 import type { ActionFunctionArgs } from "@remix-run/node";
@@ -5,28 +6,28 @@ import { Prisma } from "@prisma/client";
 import { authenticate } from "../shopify.server";
 import db from "../db.server"; // Tu cliente de Prisma conectado a Supabase
 import { sendCustomerDataReportEmail } from "../services/email.server";
+import { logger } from "../utils/logger.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   // `authenticate.webhook` valida la petición y devuelve el tópico, tienda y payload
   const { topic, shop, payload, admin } = await authenticate.webhook(request);
 
   // Esta línea es útil para ver en tu consola cada webhook que llega
-  console.log(`-> Webhook recibido: ${topic} para la tienda ${shop}`);
+  logger.webhook(topic, shop, "received");
 
   switch (topic) {
     // =================================================================
     // WEBHOOKS DE CUMPLIMIENTO OBLIGATORIOS
     // =================================================================
     case "CUSTOMERS_DATA_REQUEST":
-      console.log(
-        `Iniciando recopilación de datos de cliente para la tienda ${shop}`,
-      );
+      logger.info("Iniciando recopilación de datos de cliente", { shop });
 
       const { customer } = payload;
 
       if (!customer || (!customer.email && !customer.phone)) {
-        console.warn(
-          "Payload de CUSTOMERS_DATA_REQUEST no contiene email ni teléfono. No se puede proceder.",
+        logger.warn(
+          "Payload de CUSTOMERS_DATA_REQUEST no contiene email ni teléfono",
+          { shop },
         );
         return new Response(null, { status: 200 });
       }
@@ -71,9 +72,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           },
         };
 
-        console.log(
-          `Datos recopilados: ${JSON.stringify(customerDataReport, null, 2)}`,
-        );
+        logger.info("Datos recopilados para cliente", {
+          shop,
+          ticketsCount: foundTickets.length,
+          ordersCount: foundOrderConfirmations.length,
+        });
 
         if (!admin) {
           throw new Error(
@@ -107,24 +110,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           merchantEmail,
         });
 
-        // TODO: ACCIÓN REQUERIDA
-        // Implementa aquí la lógica para enviar el `customerDataReport` por email al dueño de la tienda.
-        // Necesitarás un servicio como Resend, SendGrid, etc.
-        console.log(
-          "✅ Proceso de recopilación completado. El siguiente paso es notificar al comerciante.",
-        );
+        logger.info("Proceso de recopilación completado", { shop });
       } catch (error) {
-        console.error(
-          "❌ Error durante la recopilación de datos del cliente:",
-          error,
-        );
+        logger.error("Error durante la recopilación de datos del cliente", {
+          shop,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
       break;
 
     case "CUSTOMERS_REDACT":
-      console.log(
-        `Iniciando proceso de redacción de datos para la tienda ${shop}`,
-      );
+      logger.info("Iniciando proceso de redacción de datos", { shop });
 
       const { customer: customerToRedact } = payload;
 
@@ -132,8 +128,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         !customerToRedact ||
         (!customerToRedact.email && !customerToRedact.phone)
       ) {
-        console.warn(
-          "Payload de CUSTOMERS_REDACT no contiene email o teléfono. No se puede proceder.",
+        logger.warn(
+          "Payload de CUSTOMERS_REDACT no contiene email o teléfono",
+          { shop },
         );
         return new Response(null, { status: 200 });
       }
@@ -157,7 +154,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               customer_email: customerToRedact.email, // Ajuste de precisión: Ticket solo usa email
             },
           });
-          console.log(`- Tickets eliminados: ${deletedTickets.count}`);
+          logger.info("Tickets eliminados", {
+            shop,
+            count: deletedTickets.count,
+          });
 
           const updatedOrders = await prisma.orderConfirmation.updateMany({
             where: {
@@ -171,35 +171,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               shipping_address: Prisma.JsonNull,
             },
           });
-          console.log(
-            `- Confirmaciones de pedido anonimizadas: ${updatedOrders.count}`,
-          );
+          logger.info("Confirmaciones de pedido anonimizadas", {
+            shop,
+            count: updatedOrders.count,
+          });
 
           return { deletedTickets, updatedOrders };
         });
 
-        console.log(
-          "✅ Proceso de redacción completado con éxito.",
-          transactionResult,
-        );
+        logger.info("Proceso de redacción completado con éxito", { shop });
       } catch (error) {
-        console.error(
-          "❌ Error durante la transacción de redacción de datos:",
-          error,
-        );
+        logger.error("Error durante la transacción de redacción de datos", {
+          shop,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
       break;
 
     case "SHOP_REDACT":
-      console.log(
-        `Iniciando eliminación completa de datos para la tienda ${shop}`,
-      );
+      logger.info("Iniciando eliminación completa de datos", { shop });
 
       const { shop_domain } = payload;
       if (!shop_domain) {
-        console.warn(
-          "Payload de SHOP_REDACT no contiene shop_domain. No se puede proceder.",
-        );
+        logger.warn("Payload de SHOP_REDACT no contiene shop_domain", { shop });
         return new Response(null, { status: 200 });
       }
 
@@ -210,9 +204,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           });
 
           if (!shopRecord) {
-            console.log(
-              `La tienda ${shop_domain} no fue encontrada. No se requiere acción.`,
-            );
+            logger.info("La tienda no fue encontrada", { shop_domain });
             return;
           }
 
@@ -220,29 +212,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             where: { shop_id: shopRecord.id },
             data: { shop_id: null, assigned_at: null, status: "AVAILABLE" },
           });
-          console.log(
-            `- Número de Twilio de la tienda ${shop_domain} devuelto al pool.`,
-          );
+          logger.info("Número de Twilio devuelto al pool", { shop_domain });
 
           const deletedSessions = await prisma.session.deleteMany({
             where: { shop: shop_domain },
           });
-          console.log(`- Sesiones eliminadas: ${deletedSessions.count}`);
+          logger.info("Sesiones eliminadas", {
+            shop_domain,
+            count: deletedSessions.count,
+          });
 
           await prisma.shop.delete({ where: { shop_domain } });
-          console.log(
-            `- Registro de la tienda ${shop_domain} y datos asociados eliminados en cascada.`,
-          );
+          logger.info("Registro de la tienda eliminado", { shop_domain });
         });
 
-        console.log(
-          `✅ Proceso de eliminación completa para ${shop_domain} finalizado.`,
-        );
+        logger.info("Proceso de eliminación completa finalizado", {
+          shop_domain,
+        });
       } catch (error) {
-        console.error(
-          `❌ Error durante la eliminación de la tienda ${shop_domain}:`,
-          error,
-        );
+        logger.error("Error durante la eliminación de la tienda", {
+          shop_domain,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
       break;
 
@@ -250,24 +241,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // OTROS WEBHOOKS
     // =================================================================
     case "APP_UNINSTALLED":
-      console.log("La app fue desinstalada. Limpiando sesión...");
+      logger.info("La app fue desinstalada. Limpiando sesión", { shop });
       await db.session.deleteMany({ where: { shop } });
       break;
 
     case "APP_SCOPES_UPDATE":
-      console.log("Los scopes han cambiado. Actualizando sesión...");
+      logger.info("Los scopes han cambiado. Actualizando sesión", { shop });
       const session = await db.session.findFirst({ where: { shop } });
       if (session) {
         await db.session.update({
           where: { id: session.id },
           data: { scope: payload.scopes.toString() },
         });
-        console.log("✅ Scopes actualizados.");
+        logger.info("Scopes actualizados", { shop });
       }
       break;
 
     default:
-      console.warn(`Webhook ${topic} no manejado.`);
+      logger.warn("Webhook no manejado", { topic, shop });
       break;
   }
 

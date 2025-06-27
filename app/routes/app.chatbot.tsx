@@ -37,6 +37,7 @@ import {
 } from "@remix-run/react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { logger } from "../utils/logger.server";
 
 /*
  * Loader para obtener datos iniciales
@@ -149,7 +150,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const action = formData.get("action");
 
-  console.log("🔧 Action recibida:", action);
+  logger.info("Action recibida en chatbot", { action: action as string });
 
   // Obtener la tienda
   const shop = await db.shop.findUnique({
@@ -159,23 +160,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   });
 
   if (!shop) {
-    console.log("❌ Tienda no encontrada:", session.shop);
+    logger.error("Tienda no encontrada", { shop: session.shop });
     return json(
       { success: false, error: "Tienda no encontrada" },
       { status: 404 },
     );
   }
 
-  console.log("✅ Tienda encontrada:", shop.id);
+  logger.info("Tienda encontrada", { shopId: shop.id });
 
   if (action === "updateChatbotConfig") {
     const botName = formData.get("botName") ?? "";
     const welcomeMessage = formData.get("welcomeMessage") ?? "";
     const isActive = formData.get("isActive") === "true";
 
-    console.log("💾 Guardando configuración:", {
+    logger.info("Guardando configuración del chatbot", {
+      shopId: shop.id,
       botName,
-      welcomeMessage: welcomeMessage.toString().substring(0, 50) + "...",
       isActive,
     });
 
@@ -201,19 +202,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         },
       });
 
-      console.log("✅ Configuración guardada:", chatbotConfig.id);
+      logger.info("Configuración guardada", { 
+        shopId: shop.id, 
+        configId: chatbotConfig.id 
+      });
 
       return json({
         success: true,
-        chatbotConfig,
-        message: "Configuración guardada exitosamente",
+        message: "Configuración actualizada correctamente",
+        config: chatbotConfig,
       });
     } catch (error) {
-      console.error("💥 Error al guardar configuración:", error);
-      return json({
-        success: false,
-        error: "Error al guardar la configuración",
+      logger.error("Error guardando configuración", {
+        shopId: shop.id,
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
+
+      return json(
+        { success: false, error: "Error al guardar la configuración" },
+        { status: 500 },
+      );
     }
   }
 
@@ -248,7 +256,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
-  return json({ success: false, error: "Acción no válida" });
+  return json({ success: false, error: "Acción no válida" }, { status: 400 });
 };
 
 /*

@@ -10,18 +10,14 @@
   import { createChat } from "https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js";
 
   async function fetchChatbotConfiguration(shopDomain) {
-    // ✅ URL actual de Cloudflare
+    // ✅ URLs desde variables de entorno
     const apiUrls = [
-      `https://libraries-printer-measuring-sentence.trycloudflare.com/api/chatbot-config?shop=${shopDomain}`,
-      `http://localhost:3000/api/chatbot-config?shop=${shopDomain}`, // fallback local
+      `${window.CHATBOT_API_BASE_URL || 'https://libraries-printer-measuring-sentence.trycloudflare.com'}/api/chatbot-config?shop=${shopDomain}`,
+      `${window.CHATBOT_API_FALLBACK_URL || 'http://localhost:3000'}/api/chatbot-config?shop=${shopDomain}`, // fallback local
     ];
-    
-    console.log("🔍 Shop domain:", shopDomain);
     
     for (const apiUrl of apiUrls) {
       try {
-        console.log("🔗 Probando URL:", apiUrl);
-        
         const response = await fetch(apiUrl, {
           method: 'GET',
           headers: {
@@ -30,23 +26,17 @@
           cache: 'no-cache'
         });
         
-        console.log("📡 Status:", response.status, "para", apiUrl);
-        
         if (response.ok) {
           const data = await response.json();
-          console.log("✅ Configuración obtenida desde:", apiUrl);
-          console.log("📋 Datos:", data);
           return data;
         }
         
       } catch (error) {
-        console.log("❌ Error con", apiUrl, ":", error.message);
         continue; // Probar siguiente URL
       }
     }
     
     // Si ninguna URL funciona, usar fallback
-    console.log("🔄 Todas las URLs fallaron, usando configuración local");
     return {
       bot_name: "Verify (Local)",
       welcome_message: "¡Hola! Configuración local activa",
@@ -57,28 +47,18 @@
   async function initializeChatbot() {
     const shopDomain = '{{ shop.permanent_domain }}';
     
-    console.log("🚀 =================================");
-    console.log("🚀 INICIANDO CHATBOT");
-    console.log("🚀 Shop:", shopDomain);
-    console.log("🚀 =================================");
-    
     // Obtener configuración
     const config = await fetchChatbotConfiguration(shopDomain);
-    
-    console.log("🤖 Configuración final:", config);
 
     // Verificar si está activo
     if (!config.is_active) {
-      console.log("⏸️ Chatbot inactivo");
       return;
     }
-
-    console.log("✅ Creando chatbot...");
 
     // Crear chatbot
     try {
       createChat({
-        webhookUrl: "https://verify-test.app.n8n.cloud/webhook/afc49feb-3869-4849-9ccc-41d6909933a6/chat",
+        webhookUrl: window.N8N_WEBHOOK_URL || "https://verify-test.app.n8n.cloud/webhook/afc49feb-3869-4849-9ccc-41d6909933a6/chat",
         initialMessages: [config.welcome_message || "¡Hola! ¿En qué puedo ayudarte?"],
         metadata: {
           shopDomain: shopDomain
@@ -92,39 +72,26 @@
         },
       });
       
-      console.log("✅ Chatbot creado exitosamente");
-      
     } catch (chatError) {
-      console.error("💥 Error al crear chatbot:", chatError);
+      console.error("Error al crear chatbot:", chatError);
     }
-
-    // Verificar elementos
-    setTimeout(() => {
-      const chatElement = document.querySelector('.chat-window') || 
-                         document.querySelector('*[class*="chat"]');
-      
-      if (chatElement) {
-        console.log("✅ Elemento del chat encontrado:", chatElement);
-      } else {
-        console.log("❌ No se encontró elemento del chat");
-        console.log("🔍 Todos los elementos:", document.querySelectorAll('*').length);
-      }
-    }, 2000);
   }
 
-  // Debug functions
-  window.debugChatbot = {
-    test: () => fetchChatbotConfiguration('{{ shop.permanent_domain }}'),
-    reload: initializeChatbot,
-    checkElements: () => {
-      return {
-        chatWindow: document.querySelector('.chat-window'),
-        anyChat: document.querySelector('*[class*="chat"]'),
-        scripts: document.querySelectorAll('script[src*="n8n"]'),
-        totalElements: document.querySelectorAll('*').length
-      };
-    }
-  };
+  // Debug functions (solo en desarrollo)
+  if (window.location.hostname === 'localhost' || window.location.hostname.includes('trycloudflare.com')) {
+    window.debugChatbot = {
+      test: () => fetchChatbotConfiguration('{{ shop.permanent_domain }}'),
+      reload: initializeChatbot,
+      checkElements: () => {
+        return {
+          chatWindow: document.querySelector('.chat-window'),
+          anyChat: document.querySelector('*[class*="chat"]'),
+          scripts: document.querySelectorAll('script[src*="n8n"]'),
+          totalElements: document.querySelectorAll('*').length
+        };
+      }
+    };
+  }
 
   // Inicializar
   if (document.readyState === 'loading') {
@@ -132,6 +99,4 @@
   } else {
     initializeChatbot();
   }
-
-  console.log("📝 Script cargado - Debug disponible en window.debugChatbot");
 </script>

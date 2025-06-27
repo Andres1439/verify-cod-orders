@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // app/routes/api.orders.tsx - VERSIÓN CORREGIDA COMPLETA
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
+import { logger } from "../utils/logger.server";
 
 // ✅ TIPOS PARA TYPESCRIPT Y PRISMA JSON
 interface ShopifyCustomerData {
@@ -82,16 +84,61 @@ interface CountryProvinceResult {
   province: string;
 }
 
+// ✅ VALIDACIÓN DE ENTRADA PARA PRODUCCIÓN
+function validateOrderData(data: any) {
+  const errors: string[] = [];
+
+  if (!data.customerData?.email || !data.customerData?.phone) {
+    errors.push("Email y teléfono del cliente son requeridos");
+  }
+
+  if (!data.shippingAddress?.address1 || !data.shippingAddress?.city) {
+    errors.push("Dirección de envío incompleta");
+  }
+
+  if (!data.lineItems || data.lineItems.length === 0) {
+    errors.push("El pedido debe contener al menos un producto");
+  }
+
+  if (!data.itemPrice || data.itemPrice <= 0) {
+    errors.push("Precio del producto debe ser mayor a 0");
+  }
+
+  return errors;
+}
+
+// ✅ RATE LIMITING BÁSICO (en producción usar Redis)
+const requestCounts = new Map<string, { count: number; resetTime: number }>();
+
+function checkRateLimit(
+  shopDomain: string,
+  limit = 100,
+  windowMs = 60000,
+): boolean {
+  const now = Date.now();
+  const key = shopDomain;
+  const record = requestCounts.get(key);
+
+  if (!record || now > record.resetTime) {
+    requestCounts.set(key, { count: 1, resetTime: now + windowMs });
+    return true;
+  }
+
+  if (record.count >= limit) {
+    return false;
+  }
+
+  record.count++;
+  return true;
+}
+
 // ✅ FUNCIÓN PARA OBTENER LA MONEDA DE LA TIENDA
 async function getShopCurrency(
   shopDomain: string,
   accessToken: string,
 ): Promise<string> {
   try {
-    console.log(
-      "[Shop Currency] 🔍 Obteniendo moneda de la tienda:",
-      shopDomain,
-    );
+    logger.info("Obteniendo moneda de la tienda", { shopDomain });
 
     // Usar GraphQL para obtener la moneda (más confiable)
     const query = `
@@ -131,15 +178,19 @@ async function getShopCurrency(
     const shop = result.data.shop;
     const currency = shop.currencyCode || "USD";
 
-    console.log("[Shop Currency] ✅ Información de la tienda:", {
-      moneda: currency,
-      país: shop.countryCode,
-      nombre: shop.name,
+    logger.info("Información de la tienda obtenida", {
+      shopDomain,
+      currency,
+      country: shop.countryCode,
+      name: shop.name,
     });
 
     return currency;
   } catch (error) {
-    console.error("[Shop Currency] ❌ Error obteniendo moneda:", error);
+    logger.error("Error obteniendo moneda de la tienda", {
+      shopDomain,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
 
     // ✅ FALLBACK: usar REST API si GraphQL falla
     try {
@@ -155,17 +206,20 @@ async function getShopCurrency(
       if (restResponse.ok) {
         const restResult = await restResponse.json();
         const fallbackCurrency = restResult.shop?.currency || "USD";
-        console.log(
-          "[Shop Currency] 🔄 Fallback REST API - Moneda:",
-          fallbackCurrency,
-        );
+        logger.info("Fallback REST API - Moneda obtenida", {
+          shopDomain,
+          currency: fallbackCurrency,
+        });
         return fallbackCurrency;
       }
     } catch (fallbackError) {
-      console.error(
-        "[Shop Currency] ❌ Fallback también falló:",
-        fallbackError,
-      );
+      logger.error("Fallback también falló", {
+        shopDomain,
+        error:
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : "Unknown error",
+      });
     }
 
     // Por defecto USD
@@ -185,7 +239,7 @@ async function createShopifyOrder({
   itemPrice,
 }: CreateShopifyOrderParams): Promise<ShopifyOrderResult> {
   try {
-    console.log("[Shopify REST] 📤 Creando orden con REST API...");
+    logger.info("Creando orden con REST API", { shopDomain });
 
     // ✅ OBTENER MONEDA DE LA TIENDA PRIMERO
     const shopCurrency = await getShopCurrency(shopDomain, accessToken);
@@ -205,37 +259,16 @@ async function createShopifyOrder({
           zip: shippingAddress.zip,
           phone: shippingAddress.phone,
         },
-        billing_address: {
-          first_name: shippingAddress.firstName,
-          last_name: shippingAddress.lastName,
-          address1: shippingAddress.address1,
-          city: shippingAddress.city,
-          province: shippingAddress.province,
-          country: shippingAddress.country,
-          zip: shippingAddress.zip,
-          phone: shippingAddress.phone,
-        },
         line_items: lineItems.map((item) => ({
-          // ✅ MANEJAR VARIANT_ID CON O SIN GID
-          variant_id: item.variantId.includes("gid://")
-            ? item.variantId.replace("gid://shopify/ProductVariant/", "")
-            : item.variantId,
+          variant_id: item.variantId,
           quantity: item.quantity,
-          // ✅ NO especificar precio - Shopify usa el precio configurado del producto
-          // price: itemPrice, // ❌ COMENTADO - causa problemas de currency
+          custom_attributes: item.customAttributes,
         })),
-        // ✅ NO especificar currency - Shopify usa automáticamente la de la tienda
+        currency: shopCurrency,
+        financial_status: "pending",
+        fulfillment_status: "unfulfilled",
       },
     };
-
-    console.log(
-      "[Shopify REST] 📦 Datos a enviar:",
-      JSON.stringify(orderData, null, 2),
-    );
-    console.log(
-      "[Shopify REST] 💰 Moneda detectada de la tienda:",
-      shopCurrency,
-    );
 
     const response = await fetch(
       `https://${shopDomain}/admin/api/2025-04/orders.json`,
@@ -249,47 +282,47 @@ async function createShopifyOrder({
       },
     );
 
-    const result = await response.json();
-
     if (!response.ok) {
-      console.error("[Shopify REST] ❌ Error:", response.status, result);
-      return {
-        success: false,
-        error: result.errors
-          ? JSON.stringify(result.errors)
-          : `HTTP ${response.status}`,
-      };
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
+    const result = await response.json();
     const order = result.order;
-    console.log("[Shopify REST] ✅ Orden creada exitosamente:", order.name);
-    console.log("[Shopify REST] 💰 Moneda de la orden:", order.currency);
+
+    logger.info("Orden creada exitosamente", {
+      shopDomain,
+      orderName: order.name,
+      currency: order.currency,
+    });
 
     return {
       success: true,
       order: {
-        id: `gid://shopify/Order/${order.id}`,
+        id: order.id,
         name: order.name,
         totalPrice: order.total_price,
-        currency: order.currency, // ✅ Shopify devuelve la moneda correcta automáticamente
+        currency: order.currency,
         customer: {
-          id: order.customer?.id
-            ? `gid://shopify/Customer/${order.customer.id}`
-            : "",
+          id: order.customer?.id,
           email: order.email,
         },
         lineItems: order.line_items.map((item: any) => ({
-          id: `gid://shopify/LineItem/${item.id}`,
+          id: item.id,
           title: item.title,
           quantity: item.quantity,
           variant: {
-            id: `gid://shopify/ProductVariant/${item.variant_id}`,
+            id: item.variant_id,
           },
         })),
       },
     };
   } catch (error) {
-    console.error("[Shopify REST] ❌ Error:", error);
+    logger.error("Error creando orden en Shopify", {
+      shopDomain,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+
     return {
       success: false,
       error: error instanceof Error ? error.message : "Error desconocido",
@@ -328,8 +361,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       variant_id,
     } = body;
 
-    console.log("[API Orders] 🛒 Creando OrderConfirmation para:", shopDomain);
-    console.log("[API Orders] 📦 Datos recibidos:", {
+    logger.info("Creando OrderConfirmation para:", shopDomain);
+    logger.info("Datos recibidos:", {
       first_name,
       last_name,
       email,
@@ -368,18 +401,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
 
     if (!shop) {
+      logger.error("Tienda no encontrada");
       return json({ error: "Tienda no encontrada" }, { status: 404, headers });
     }
 
     if (!shop.access_token) {
-      console.error("[API Orders] ❌ Access token no disponible");
+      logger.error("Token de acceso no disponible para la tienda");
       return json(
         { error: "Token de acceso no disponible para la tienda" },
         { status: 400, headers },
       );
     }
 
-    console.log("[API Orders] ✅ Tienda encontrada:", shop.id);
+    logger.info("Tienda encontrada:", shop.id);
 
     // Calcular total del pedido
     const itemPrice = parseFloat(price) || 0;
@@ -428,7 +462,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     ];
 
     // ✅ 1. CREAR ORDEN DIRECTAMENTE EN SHOPIFY PRIMERO
-    console.log("[API Orders] 📤 Creando orden directamente en Shopify...");
+    logger.info("Creando orden directamente en Shopify...");
 
     const shopifyResult = await createShopifyOrder({
       shopDomain: shop.shop_domain,
@@ -458,10 +492,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // ✅ SI FALLA SHOPIFY, NO CONTINUAR
     if (!shopifyResult.success || !shopifyResult.order) {
-      console.error(
-        "[API Orders] ❌ Error al crear orden en Shopify:",
-        shopifyResult.error,
-      );
+      logger.error("Error al crear orden en Shopify:", shopifyResult.error);
       return json(
         {
           success: false,
@@ -472,8 +503,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    console.log(
-      "[API Orders] ✅ Orden creada exitosamente en Shopify:",
+    logger.info(
+      "Orden creada exitosamente en Shopify:",
       shopifyResult.order.name,
     );
 
@@ -499,7 +530,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       },
     });
 
-    console.log("[API Orders] ✅ OrderConfirmation creada:", {
+    logger.info("OrderConfirmation creada:", {
       id: orderConfirmation.id,
       internal_order_number: orderConfirmation.internal_order_number,
       shopify_order_id: shopifyOrderId,
@@ -570,7 +601,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       { headers },
     );
   } catch (error) {
-    console.error("[API Orders] ❌ Error crítico:", error);
+    logger.error("Error crítico:", error);
     return json(
       {
         error: "Error interno del servidor al crear la orden",
@@ -592,9 +623,9 @@ function detectCountryAndProvince(
   let finalCountry = receivedCountry || "";
   let finalProvince = receivedProvince || "";
 
-  console.log("[Detección] Ciudad recibida:", cityLower);
-  console.log("[Detección] País recibido:", receivedCountry);
-  console.log("[Detección] Provincia recibida:", receivedProvince);
+  logger.info("Ciudad recibida:", cityLower);
+  logger.info("País recibido:", receivedCountry);
+  logger.info("Provincia recibida:", receivedProvince);
 
   // Si no hay país, detectar automáticamente
   if (!finalCountry || finalCountry.trim() === "") {
@@ -679,8 +710,8 @@ function detectCountryAndProvince(
     }
   }
 
-  console.log("[Detección] País final:", finalCountry);
-  console.log("[Detección] Provincia final:", finalProvince);
+  logger.info("País final:", finalCountry);
+  logger.info("Provincia final:", finalProvince);
 
   return { country: finalCountry, province: finalProvince };
 }
