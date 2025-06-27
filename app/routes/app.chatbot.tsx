@@ -403,333 +403,344 @@ export default function ChatbotPage() {
     navigation.formData?.get("action") === "updateChatbotConfig";
 
   return (
-    <Page
-      title="Chatbot AI"
-      subtitle="Configuración y análisis de tu asistente virtual"
-    >
-      <TitleBar title="Chatbot AI" />
+    <div style={{ marginBottom: "2rem" }}>
+      <Page
+        title="Chatbot AI"
+        subtitle="Configuración y análisis de tu asistente virtual"
+      >
+        <TitleBar title="Chatbot AI" />
 
-      <Tabs tabs={tabs} selected={activeTab} onSelect={setActiveTab}>
-        <Layout>
-          {activeTab === 0 && (
-            <>
-              <Layout.Section>
-                <BlockStack gap="400">
-                  <Banner
-                    title={`Chatbot ${config.is_active ? "activo" : "inactivo"}`}
-                    icon={config.is_active ? CheckIcon : InfoIcon}
-                    tone={config.is_active ? "success" : "warning"}
-                    action={{
-                      content: config.is_active ? "Desactivar" : "Activar",
-                      onAction: toggleBotStatus,
-                    }}
-                  >
-                    <p>
-                      {config.is_active
-                        ? "El chatbot está actualmente activo y disponible para tus clientes."
-                        : "El chatbot está inactivo y no responderá a los clientes."}
-                    </p>
-                  </Banner>
-
-                  {/* ✅ Mensajes de resultado mejorados */}
-                  {actionData?.success && (
-                    <Banner tone="success">
-                      <p>{actionData.message || "Operación exitosa"}</p>
-                    </Banner>
-                  )}
-
-                  {actionData?.error && (
-                    <Banner tone="critical">
-                      <p>{actionData.error}</p>
-                    </Banner>
-                  )}
-
-                  <Card>
-                    <BlockStack gap="400">
-                      <TextField
-                        label="Nombre del bot"
-                        value={config.bot_name}
-                        onChange={(value) =>
-                          setConfig((prev) => ({ ...prev, bot_name: value }))
-                        }
-                        autoComplete="off"
-                        helpText="Este nombre aparecerá en el título del chatbot"
-                      />
-                      <TextField
-                        label="Mensaje de bienvenida"
-                        value={config.welcome_message}
-                        onChange={(value) =>
-                          setConfig((prev) => ({
-                            ...prev,
-                            welcome_message: value,
-                          }))
-                        }
-                        multiline={4}
-                        autoComplete="off"
-                        helpText="Este será el primer mensaje que vean tus clientes"
-                      />
-                      <Button
-                        variant="primary"
-                        loading={isSaving}
-                        onClick={handleSaveConfig}
-                      >
-                        Guardar configuración
-                      </Button>
-                    </BlockStack>
-                  </Card>
-
-                  <Card>
-                    <BlockStack gap="400">
-                      <InlineStack align="space-between" blockAlign="center">
-                        <Text as="h3" variant="headingMd">
-                          Tickets recientes
-                        </Text>
-                        <Button
-                          variant="plain"
-                          onClick={() => setActiveTab(1)}
-                          icon={ChatIcon}
-                        >
-                          Ver todos los tickets
-                        </Button>
-                      </InlineStack>
-                      {tickets.length === 0 ? (
-                        <Text as="p" tone="subdued">
-                          No hay tickets aún. Los tickets aparecerán cuando los
-                          clientes usen el chatbot.
-                        </Text>
-                      ) : (
-                        <DataTable
-                          columnContentTypes={[
-                            "text",
-                            "text",
-                            "text",
-                            "text",
-                            "text",
-                          ]}
-                          headings={[
-                            "ID",
-                            "Cliente",
-                            "Motivo",
-                            "Fecha",
-                            "Acción",
-                          ]}
-                          rows={tickets.slice(0, 3).map((ticket) => [
-                            ticket.id.substring(0, 6) + "...",
-                            ticket.customerName,
-                            ticket.subject,
-                            ticket.date,
-                            <Button
-                              key={ticket.id}
-                              size="micro"
-                              onClick={() => viewTicketDetails(ticket)}
-                              icon={ViewIcon}
-                            >
-                              Ver detalles
-                            </Button>,
-                          ])}
-                        />
-                      )}
-                    </BlockStack>
-                  </Card>
-                </BlockStack>
-              </Layout.Section>
-            </>
-          )}
-
-          {activeTab === 1 && (
-            <Layout.Section>
-              <Card>
-                <BlockStack gap="400">
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text as="h2" variant="headingMd">
-                      Tickets de soporte ({tickets.length})
-                    </Text>
-                    <div style={{ width: "300px" }}>
-                      <TextField
-                        label="Buscar tickets"
-                        placeholder="Buscar por ID, cliente, motivo..."
-                        value={searchQuery}
-                        onChange={setSearchQuery}
-                        prefix={<Icon source={SearchIcon} />}
-                        autoComplete="off"
-                      />
-                    </div>
-                  </InlineStack>
-
-                  {navigation.state === "loading" ? (
-                    <div style={{ textAlign: "center", padding: "2rem" }}>
-                      <Spinner size="large" />
-                    </div>
-                  ) : filteredTickets.length === 0 ? (
-                    <EmptyState
-                      heading="No se encontraron tickets"
-                      image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+        <Tabs tabs={tabs} selected={activeTab} onSelect={setActiveTab}>
+          <Layout>
+            {activeTab === 0 && (
+              <>
+                <Layout.Section>
+                  <BlockStack gap="400">
+                    <Banner
+                      title={`Chatbot ${config.is_active ? "activo" : "inactivo"}`}
+                      icon={config.is_active ? CheckIcon : InfoIcon}
+                      tone={config.is_active ? "success" : "warning"}
+                      action={{
+                        content: config.is_active ? "Desactivar" : "Activar",
+                        onAction: toggleBotStatus,
+                      }}
                     >
                       <p>
-                        {tickets.length === 0
-                          ? "No hay tickets aún. Los tickets aparecerán cuando los clientes usen el chatbot."
-                          : "Intenta ajustar tu búsqueda para encontrar tickets"}
+                        {config.is_active
+                          ? "El chatbot está actualmente activo y disponible para tus clientes."
+                          : "El chatbot está inactivo y no responderá a los clientes."}
                       </p>
-                    </EmptyState>
-                  ) : (
-                    <DataTable
-                      columnContentTypes={[
-                        "text",
-                        "text",
-                        "text",
-                        "text",
-                        "text",
-                      ]}
-                      headings={["ID", "Cliente", "Motivo", "Fecha", "Acción"]}
-                      rows={filteredTickets.map((ticket) => [
-                        ticket.id.substring(0, 6) + "...",
-                        ticket.customerName,
-                        ticket.subject,
-                        ticket.date,
+                    </Banner>
+
+                    {/* ✅ Mensajes de resultado mejorados */}
+                    {actionData?.success && (
+                      <Banner tone="success">
+                        <p>{actionData.message || "Operación exitosa"}</p>
+                      </Banner>
+                    )}
+
+                    {actionData?.error && (
+                      <Banner tone="critical">
+                        <p>{actionData.error}</p>
+                      </Banner>
+                    )}
+
+                    <Card>
+                      <BlockStack gap="400">
+                        <TextField
+                          label="Nombre del bot"
+                          value={config.bot_name}
+                          onChange={(value) =>
+                            setConfig((prev) => ({ ...prev, bot_name: value }))
+                          }
+                          autoComplete="off"
+                          helpText="Este nombre aparecerá en el título del chatbot"
+                        />
+                        <TextField
+                          label="Mensaje de bienvenida"
+                          value={config.welcome_message}
+                          onChange={(value) =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              welcome_message: value,
+                            }))
+                          }
+                          multiline={4}
+                          autoComplete="off"
+                          helpText="Este será el primer mensaje que vean tus clientes"
+                        />
                         <Button
-                          key={ticket.id}
-                          size="micro"
-                          onClick={() => viewTicketDetails(ticket)}
-                          icon={ViewIcon}
+                          variant="primary"
+                          loading={isSaving}
+                          onClick={handleSaveConfig}
                         >
-                          Ver detalles
-                        </Button>,
-                      ])}
-                    />
-                  )}
-                </BlockStack>
-              </Card>
-            </Layout.Section>
-          )}
-        </Layout>
-      </Tabs>
+                          Guardar configuración
+                        </Button>
+                      </BlockStack>
+                    </Card>
 
-      {/* ✅ MODAL PARA VER DETALLES DEL TICKET */}
-      <Modal
-        open={isModalOpen}
-        onClose={closeModal}
-        title="Detalles del Ticket"
-        primaryAction={{
-          content: "Cerrar",
-          onAction: closeModal,
-        }}
-        size="large"
-      >
-        <Modal.Section>
-          {selectedTicket && (
-            <BlockStack gap="400">
-              {/* ID del ticket */}
-              <InlineStack gap="200" blockAlign="center">
-                <Text as="h3" variant="headingMd">
-                  ID: {selectedTicket.id}
-                </Text>
-                {getStatusBadge(selectedTicket.status)}
-              </InlineStack>
+                    <Card>
+                      <BlockStack gap="400">
+                        <InlineStack align="space-between" blockAlign="center">
+                          <Text as="h3" variant="headingMd">
+                            Tickets recientes
+                          </Text>
+                          <Button
+                            variant="plain"
+                            onClick={() => setActiveTab(1)}
+                            icon={ChatIcon}
+                          >
+                            Ver todos los tickets
+                          </Button>
+                        </InlineStack>
+                        {tickets.length === 0 ? (
+                          <Text as="p" tone="subdued">
+                            No hay tickets aún. Los tickets aparecerán cuando
+                            los clientes usen el chatbot.
+                          </Text>
+                        ) : (
+                          <DataTable
+                            columnContentTypes={[
+                              "text",
+                              "text",
+                              "text",
+                              "text",
+                              "text",
+                            ]}
+                            headings={[
+                              "ID",
+                              "Cliente",
+                              "Motivo",
+                              "Fecha",
+                              "Acción",
+                            ]}
+                            rows={tickets.slice(0, 3).map((ticket) => [
+                              ticket.id.substring(0, 6) + "...",
+                              ticket.customerName,
+                              ticket.subject,
+                              ticket.date,
+                              <Button
+                                key={ticket.id}
+                                size="micro"
+                                onClick={() => viewTicketDetails(ticket)}
+                                icon={ViewIcon}
+                              >
+                                Ver detalles
+                              </Button>,
+                            ])}
+                          />
+                        )}
+                      </BlockStack>
+                    </Card>
+                  </BlockStack>
+                </Layout.Section>
+              </>
+            )}
 
-              {/* Información del cliente */}
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h4" variant="headingMd">
-                    Información del Cliente
-                  </Text>
-                  <InlineStack gap="200">
-                    <Text as="dt" variant="bodyMd" tone="subdued">
-                      Nombre:
-                    </Text>
-                    <Text as="dd" variant="bodyMd">
-                      {selectedTicket.customerName}
-                    </Text>
-                  </InlineStack>
-                  <InlineStack gap="200">
-                    <Text as="dt" variant="bodyMd" tone="subdued">
-                      Email:
-                    </Text>
-                    <Text as="dd" variant="bodyMd">
-                      {selectedTicket.customerEmail}
-                    </Text>
-                  </InlineStack>
-                  <InlineStack gap="200">
-                    <Text as="dt" variant="bodyMd" tone="subdued">
-                      Teléfono:
-                    </Text>
-                    <Text as="dd" variant="bodyMd">
-                      {selectedTicket.customerPhone}
-                    </Text>
-                  </InlineStack>
-                </BlockStack>
-              </Card>
-
-              {/* Información del ticket */}
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h4" variant="headingMd">
-                    Información del Ticket
-                  </Text>
-                  <InlineStack gap="200">
-                    <Text as="dt" variant="bodyMd" tone="subdued">
-                      Motivo:
-                    </Text>
-                    <Text as="dd" variant="bodyMd">
-                      {selectedTicket.subject}
-                    </Text>
-                  </InlineStack>
-                  <InlineStack gap="200">
-                    <Text as="dt" variant="bodyMd" tone="subdued">
-                      Fecha:
-                    </Text>
-                    <Text as="dd" variant="bodyMd">
-                      {selectedTicket.date}
-                    </Text>
-                  </InlineStack>
-                  <BlockStack gap="200">
-                    <Text as="dt" variant="bodyMd" tone="subdued">
-                      Mensaje completo:
-                    </Text>
-                    <div
-                      style={{
-                        backgroundColor: "#f6f6f7",
-                        padding: "12px",
-                        borderRadius: "8px",
-                        maxHeight: "200px",
-                        overflowY: "auto",
-                      }}
-                    >
-                      <Text as="dd" variant="bodyMd">
-                        {selectedTicket.message}
+            {activeTab === 1 && (
+              <Layout.Section>
+                <Card>
+                  <BlockStack gap="400">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text as="h2" variant="headingMd">
+                        Tickets de soporte ({tickets.length})
                       </Text>
+                      <div style={{ width: "300px" }}>
+                        <TextField
+                          label="Buscar tickets"
+                          placeholder="Buscar por ID, cliente, motivo..."
+                          value={searchQuery}
+                          onChange={setSearchQuery}
+                          prefix={<Icon source={SearchIcon} />}
+                          autoComplete="off"
+                        />
+                      </div>
+                    </InlineStack>
+
+                    {navigation.state === "loading" ? (
+                      <div style={{ textAlign: "center", padding: "2rem" }}>
+                        <Spinner size="large" />
+                      </div>
+                    ) : filteredTickets.length === 0 ? (
+                      <EmptyState
+                        heading="No se encontraron tickets"
+                        image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                      >
+                        <p>
+                          {tickets.length === 0
+                            ? "No hay tickets aún. Los tickets aparecerán cuando los clientes usen el chatbot."
+                            : "Intenta ajustar tu búsqueda para encontrar tickets"}
+                        </p>
+                      </EmptyState>
+                    ) : (
+                      <DataTable
+                        columnContentTypes={[
+                          "text",
+                          "text",
+                          "text",
+                          "text",
+                          "text",
+                        ]}
+                        headings={[
+                          "ID",
+                          "Cliente",
+                          "Motivo",
+                          "Fecha",
+                          "Acción",
+                        ]}
+                        rows={filteredTickets.map((ticket) => [
+                          ticket.id.substring(0, 6) + "...",
+                          ticket.customerName,
+                          ticket.subject,
+                          ticket.date,
+                          <Button
+                            key={ticket.id}
+                            size="micro"
+                            onClick={() => viewTicketDetails(ticket)}
+                            icon={ViewIcon}
+                          >
+                            Ver detalles
+                          </Button>,
+                        ])}
+                      />
+                    )}
+                  </BlockStack>
+                </Card>
+              </Layout.Section>
+            )}
+          </Layout>
+        </Tabs>
+
+        {/* ✅ MODAL PARA VER DETALLES DEL TICKET */}
+        <Modal
+          open={isModalOpen}
+          onClose={closeModal}
+          title="Detalles del Ticket"
+          primaryAction={{
+            content: "Cerrar",
+            onAction: closeModal,
+          }}
+          size="large"
+        >
+          <Modal.Section>
+            {selectedTicket && (
+              <BlockStack gap="400">
+                {/* ID del ticket */}
+                <InlineStack gap="200" blockAlign="center">
+                  <Text as="h3" variant="headingMd">
+                    ID: {selectedTicket.id}
+                  </Text>
+                  {getStatusBadge(selectedTicket.status)}
+                </InlineStack>
+
+                {/* Información del cliente */}
+                <Card>
+                  <BlockStack gap="200">
+                    <Text as="h4" variant="headingMd">
+                      Información del Cliente
+                    </Text>
+                    <InlineStack gap="200">
+                      <Text as="dt" variant="bodyMd" tone="subdued">
+                        Nombre:
+                      </Text>
+                      <Text as="dd" variant="bodyMd">
+                        {selectedTicket.customerName}
+                      </Text>
+                    </InlineStack>
+                    <InlineStack gap="200">
+                      <Text as="dt" variant="bodyMd" tone="subdued">
+                        Email:
+                      </Text>
+                      <Text as="dd" variant="bodyMd">
+                        {selectedTicket.customerEmail}
+                      </Text>
+                    </InlineStack>
+                    <InlineStack gap="200">
+                      <Text as="dt" variant="bodyMd" tone="subdued">
+                        Teléfono:
+                      </Text>
+                      <Text as="dd" variant="bodyMd">
+                        {selectedTicket.customerPhone}
+                      </Text>
+                    </InlineStack>
+                  </BlockStack>
+                </Card>
+
+                {/* Información del ticket */}
+                <Card>
+                  <BlockStack gap="200">
+                    <Text as="h4" variant="headingMd">
+                      Información del Ticket
+                    </Text>
+                    <InlineStack gap="200">
+                      <Text as="dt" variant="bodyMd" tone="subdued">
+                        Motivo:
+                      </Text>
+                      <Text as="dd" variant="bodyMd">
+                        {selectedTicket.subject}
+                      </Text>
+                    </InlineStack>
+                    <InlineStack gap="200">
+                      <Text as="dt" variant="bodyMd" tone="subdued">
+                        Fecha:
+                      </Text>
+                      <Text as="dd" variant="bodyMd">
+                        {selectedTicket.date}
+                      </Text>
+                    </InlineStack>
+                    <BlockStack gap="200">
+                      <Text as="dt" variant="bodyMd" tone="subdued">
+                        Mensaje completo:
+                      </Text>
+                      <div
+                        style={{
+                          backgroundColor: "#f6f6f7",
+                          padding: "12px",
+                          borderRadius: "8px",
+                          maxHeight: "200px",
+                          overflowY: "auto",
+                        }}
+                      >
+                        <Text as="dd" variant="bodyMd">
+                          {selectedTicket.message}
+                        </Text>
+                      </div>
+                    </BlockStack>
+                  </BlockStack>
+                </Card>
+
+                {/* Cambiar estado */}
+                <Card>
+                  <BlockStack gap="200">
+                    <Text as="h4" variant="headingMd">
+                      Cambiar Estado
+                    </Text>
+                    <div style={{ width: "200px" }}>
+                      <Select
+                        label="Estado del ticket"
+                        options={[
+                          { label: "Pendiente", value: "PENDING" },
+                          { label: "En Progreso", value: "IN_PROGRESS" },
+                          { label: "Resuelto", value: "RESOLVED" },
+                          { label: "Cerrado", value: "CLOSED" },
+                        ]}
+                        value={selectedTicket.status}
+                        onChange={(value) => {
+                          updateTicketStatus(selectedTicket.id, value);
+                          setSelectedTicket({
+                            ...selectedTicket,
+                            status: value,
+                          });
+                        }}
+                      />
                     </div>
                   </BlockStack>
-                </BlockStack>
-              </Card>
-
-              {/* Cambiar estado */}
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h4" variant="headingMd">
-                    Cambiar Estado
-                  </Text>
-                  <div style={{ width: "200px" }}>
-                    <Select
-                      label="Estado del ticket"
-                      options={[
-                        { label: "Pendiente", value: "PENDING" },
-                        { label: "En Progreso", value: "IN_PROGRESS" },
-                        { label: "Resuelto", value: "RESOLVED" },
-                        { label: "Cerrado", value: "CLOSED" },
-                      ]}
-                      value={selectedTicket.status}
-                      onChange={(value) => {
-                        updateTicketStatus(selectedTicket.id, value);
-                        setSelectedTicket({ ...selectedTicket, status: value });
-                      }}
-                    />
-                  </div>
-                </BlockStack>
-              </Card>
-            </BlockStack>
-          )}
-        </Modal.Section>
-      </Modal>
-    </Page>
+                </Card>
+              </BlockStack>
+            )}
+          </Modal.Section>
+        </Modal>
+      </Page>
+    </div>
   );
 }

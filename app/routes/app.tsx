@@ -41,6 +41,7 @@ export default function App() {
             Home
           </Link>
           <Link to="/app/chatbot">Chatbot</Link>
+          <Link to="/app/whatsapp">WhatsApp</Link>
           <Link to="/app/pricing">Planes</Link>
         </NavMenu>
 
