@@ -155,6 +155,7 @@ model OrderConfirmation {
   // Datos básicos del pedido
   internal_order_number String                  // Número interno antes de Shopify
   shopify_order_id      String?                 // Se asigna después de confirmar
+  shopify_order_name    String? 
   customer_phone        String
   customer_name         String?
   customer_email        String?
@@ -183,6 +184,8 @@ model OrderConfirmation {
   @@unique([internal_order_number, shop_id])
   @@index([status])
   @@index([call_scheduled_at])
+  @@index([shopify_order_name])  // ✅ AGREGAR SOLO ESTA LÍNEA
+
 }
 
 model ConfirmationCall {
