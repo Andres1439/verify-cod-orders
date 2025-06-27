@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Ticket" ALTER COLUMN "customerName" DROP NOT NULL,
+ALTER COLUMN "customerPhone" DROP NOT NULL,
+ALTER COLUMN "shopDomain" DROP NOT NULL;

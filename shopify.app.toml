@@ -3,7 +3,7 @@
 client_id = "41005ee4ea0dade72d57a6c0fd641b45"
 name = "Verify COD Orders"
 handle = "verify-cod-orders-4"
-application_url = "https://corruption-perl-employee-boc.trycloudflare.com"
+application_url = "https://solutions-bed-employees-hull.trycloudflare.com"
 embedded = true
 
 [build]
@@ -26,7 +26,7 @@ api_version = "2025-04"
 scopes = "read_inventory,read_orders,read_products,write_orders"
 
 [auth]
-redirect_urls = ["https://corruption-perl-employee-boc.trycloudflare.com/auth/callback", "https://corruption-perl-employee-boc.trycloudflare.com/auth/shopify/callback", "https://corruption-perl-employee-boc.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://solutions-bed-employees-hull.trycloudflare.com/auth/callback", "https://solutions-bed-employees-hull.trycloudflare.com/auth/shopify/callback", "https://solutions-bed-employees-hull.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

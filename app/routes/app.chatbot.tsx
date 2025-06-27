@@ -1,4 +1,4 @@
-// app/routes/app.chatbot.tsx (CORREGIDO)
+// app/routes/app.chatbot.tsx (ACTUALIZADO CON MODAL)
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { useState, useEffect } from "react";
 import { TitleBar } from "@shopify/app-bridge-react";
@@ -18,12 +18,15 @@ import {
   Spinner,
   EmptyState,
   InlineStack,
+  Modal,
+  Badge,
 } from "@shopify/polaris";
 import {
   SearchIcon,
   CheckIcon,
   InfoIcon,
   ChatIcon,
+  ViewIcon,
 } from "@shopify/polaris-icons";
 import { json } from "@remix-run/node";
 import {
@@ -40,6 +43,12 @@ import db from "../db.server";
  */
 export const loader = async ({ request }: { request: Request }) => {
   const { session } = await authenticate.admin(request);
+  const url = new URL(request.url);
+
+  // Parámetros de paginación
+  const page = parseInt(url.searchParams.get("page") || "1");
+  const limit = 15; // Máximo 15 tickets por página
+  const skip = (page - 1) * limit;
 
   // Primero obtener la tienda
   const shop = await db.shop.findUnique({
@@ -56,6 +65,13 @@ export const loader = async ({ request }: { request: Request }) => {
         is_active: true,
       },
       tickets: [],
+      pagination: {
+        currentPage: 1,
+        totalPages: 0,
+        totalTickets: 0,
+        hasNext: false,
+        hasPrev: false,
+      },
     });
   }
 
@@ -70,7 +86,14 @@ export const loader = async ({ request }: { request: Request }) => {
     is_active: true,
   };
 
-  // Obtener los tickets de la base de datos
+  // Obtener el total de tickets para paginación
+  const totalTickets = await db.ticket.count({
+    where: {
+      shop_id: shop.id,
+    },
+  });
+
+  // Obtener los tickets con paginación
   const tickets = await db.ticket.findMany({
     where: {
       shop_id: shop.id,
@@ -81,26 +104,43 @@ export const loader = async ({ request }: { request: Request }) => {
     select: {
       id: true,
       customer_email: true,
+      customerName: true,
+      customerPhone: true,
       subject: true,
+      message: true,
       status: true,
       created_at: true,
-      message: true,
     },
+    skip: skip,
+    take: limit,
   });
 
   // Transformar los tickets al formato esperado por la interfaz
   const formattedTickets = tickets.map((ticket) => ({
     id: ticket.id,
-    customer: ticket.customer_email,
-    email: ticket.customer_email,
-    reason: ticket.subject,
-    date: ticket.created_at.toISOString().split("T")[0],
+    customerName: ticket.customerName || "Sin nombre",
+    customerEmail: ticket.customer_email,
+    customerPhone: ticket.customerPhone || "Sin teléfono",
+    subject: ticket.subject,
+    message: ticket.message,
+    date: ticket.created_at.toLocaleDateString(),
     status: ticket.status,
   }));
+
+  // Calcular información de paginación
+  const totalPages = Math.ceil(totalTickets / limit);
+  const pagination = {
+    currentPage: page,
+    totalPages,
+    totalTickets,
+    hasNext: page < totalPages,
+    hasPrev: page > 1,
+  };
 
   return json({
     chatbotConfig,
     tickets: formattedTickets,
+    pagination,
   });
 };
 
@@ -222,17 +262,27 @@ type LoaderData = {
   };
   tickets: Array<{
     id: string;
-    customer: string;
-    email: string;
-    reason: string;
+    customerName: string;
+    customerEmail: string;
+    customerPhone: string;
+    subject: string;
+    message: string;
     date: string;
     status: string;
   }>;
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalTickets: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
 };
 
 export default function ChatbotPage() {
   // Obtener datos del loader
-  const { chatbotConfig, tickets } = useLoaderData<LoaderData>();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { chatbotConfig, tickets, pagination } = useLoaderData<LoaderData>();
   const navigation = useNavigation();
   const submit = useSubmit();
   const actionData = useActionData<any>();
@@ -245,6 +295,10 @@ export default function ChatbotPage() {
     is_active: chatbotConfig.is_active ?? true,
   });
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Estados para el modal
+  const [selectedTicket, setSelectedTicket] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const tabs = [
     {
@@ -288,27 +342,24 @@ export default function ChatbotPage() {
     }));
   };
 
-  const getStatusBadge = (status: string, ticketId: string) => {
-    return (
-      <Select
-        label=""
-        labelHidden
-        options={getStatusOptions()}
-        value={status}
-        onChange={(value) => updateTicketStatus(ticketId, value)}
-      />
-    );
+  // ✅ Función para obtener badge de estado
+  const getStatusBadge = (status: string) => {
+    const statusConfig = {
+      PENDING: { tone: "warning" as const, text: "Pendiente" },
+      IN_PROGRESS: { tone: "info" as const, text: "En Progreso" },
+      RESOLVED: { tone: "success" as const, text: "Resuelto" },
+      CLOSED: { tone: "attention" as const, text: "Cerrado" },
+    };
+
+    const config = statusConfig[status as keyof typeof statusConfig] || {
+      tone: "attention" as const,
+      text: status,
+    };
+
+    return <Badge tone={config.tone}>{config.text}</Badge>;
   };
 
-  const getStatusOptions = () => {
-    return [
-      { label: "Pendiente", value: "PENDING" },
-      { label: "En Progreso", value: "IN_PROGRESS" },
-      { label: "Resuelto", value: "RESOLVED" },
-      { label: "Cerrado", value: "CLOSED" },
-    ];
-  };
-
+  // ✅ Función para actualizar estado del ticket en el modal
   const updateTicketStatus = (ticketId: string, newStatus: string) => {
     const formData = new FormData();
     formData.append("action", "updateTicketStatus");
@@ -317,11 +368,33 @@ export default function ChatbotPage() {
     submit(formData, { method: "post" });
   };
 
+  // ✅ Función para abrir modal con detalles
+  const viewTicketDetails = (ticket: any) => {
+    setSelectedTicket(ticket);
+    setIsModalOpen(true);
+  };
+
+  // ✅ Función para navegar entre páginas
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const goToPage = (page: number) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("page", page.toString());
+    window.location.href = url.toString();
+  };
+
+  // ✅ Función para cerrar modal
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedTicket(null);
+  };
+
+  // ✅ Filtrar tickets solo para búsqueda (no afecta paginación)
   const filteredTickets = tickets.filter(
     (ticket) =>
       ticket.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ticket.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ticket.reason.toLowerCase().includes(searchQuery.toLowerCase()),
+      ticket.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ticket.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ticket.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   // ✅ Estado de guardado basado en navigation
@@ -438,17 +511,22 @@ export default function ChatbotPage() {
                             "Cliente",
                             "Motivo",
                             "Fecha",
-                            "Estado",
+                            "Acción",
                           ]}
-                          rows={tickets
-                            .slice(0, 3)
-                            .map((ticket) => [
-                              ticket.id.substring(0, 8) + "...",
-                              ticket.customer,
-                              ticket.reason,
-                              ticket.date,
-                              getStatusBadge(ticket.status, ticket.id),
-                            ])}
+                          rows={tickets.slice(0, 3).map((ticket) => [
+                            ticket.id.substring(0, 6) + "...",
+                            ticket.customerName,
+                            ticket.subject,
+                            ticket.date,
+                            <Button
+                              key={ticket.id}
+                              size="micro"
+                              onClick={() => viewTicketDetails(ticket)}
+                              icon={ViewIcon}
+                            >
+                              Ver detalles
+                            </Button>,
+                          ])}
                         />
                       )}
                     </BlockStack>
@@ -464,12 +542,12 @@ export default function ChatbotPage() {
                 <BlockStack gap="400">
                   <InlineStack align="space-between" blockAlign="center">
                     <Text as="h2" variant="headingMd">
-                      Tickets de soporte
+                      Tickets de soporte ({tickets.length})
                     </Text>
                     <div style={{ width: "300px" }}>
                       <TextField
                         label="Buscar tickets"
-                        placeholder="Buscar tickets..."
+                        placeholder="Buscar por ID, cliente, motivo..."
                         value={searchQuery}
                         onChange={setSearchQuery}
                         prefix={<Icon source={SearchIcon} />}
@@ -487,7 +565,11 @@ export default function ChatbotPage() {
                       heading="No se encontraron tickets"
                       image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                     >
-                      <p>Intenta ajustar tu búsqueda o crear un nuevo ticket</p>
+                      <p>
+                        {tickets.length === 0
+                          ? "No hay tickets aún. Los tickets aparecerán cuando los clientes usen el chatbot."
+                          : "Intenta ajustar tu búsqueda para encontrar tickets"}
+                      </p>
                     </EmptyState>
                   ) : (
                     <DataTable
@@ -497,28 +579,22 @@ export default function ChatbotPage() {
                         "text",
                         "text",
                         "text",
-                        "text",
                       ]}
-                      headings={[
-                        "ID",
-                        "Cliente",
-                        "Email",
-                        "Motivo",
-                        "Fecha",
-                        "Estado",
-                      ]}
+                      headings={["ID", "Cliente", "Motivo", "Fecha", "Acción"]}
                       rows={filteredTickets.map((ticket) => [
-                        ticket.id.substring(0, 8) + "...",
-                        ticket.customer,
-                        ticket.email,
-                        ticket.reason,
+                        ticket.id.substring(0, 6) + "...",
+                        ticket.customerName,
+                        ticket.subject,
                         ticket.date,
-                        getStatusBadge(ticket.status, ticket.id),
+                        <Button
+                          key={ticket.id}
+                          size="micro"
+                          onClick={() => viewTicketDetails(ticket)}
+                          icon={ViewIcon}
+                        >
+                          Ver detalles
+                        </Button>,
                       ])}
-                      pagination={{
-                        hasNext: true,
-                        onNext: () => {},
-                      }}
                     />
                   )}
                 </BlockStack>
@@ -527,6 +603,133 @@ export default function ChatbotPage() {
           )}
         </Layout>
       </Tabs>
+
+      {/* ✅ MODAL PARA VER DETALLES DEL TICKET */}
+      <Modal
+        open={isModalOpen}
+        onClose={closeModal}
+        title="Detalles del Ticket"
+        primaryAction={{
+          content: "Cerrar",
+          onAction: closeModal,
+        }}
+        size="large"
+      >
+        <Modal.Section>
+          {selectedTicket && (
+            <BlockStack gap="400">
+              {/* ID del ticket */}
+              <InlineStack gap="200" blockAlign="center">
+                <Text as="h3" variant="headingMd">
+                  ID: {selectedTicket.id}
+                </Text>
+                {getStatusBadge(selectedTicket.status)}
+              </InlineStack>
+
+              {/* Información del cliente */}
+              <Card>
+                <BlockStack gap="200">
+                  <Text as="h4" variant="headingMd">
+                    Información del Cliente
+                  </Text>
+                  <InlineStack gap="200">
+                    <Text as="dt" variant="bodyMd" tone="subdued">
+                      Nombre:
+                    </Text>
+                    <Text as="dd" variant="bodyMd">
+                      {selectedTicket.customerName}
+                    </Text>
+                  </InlineStack>
+                  <InlineStack gap="200">
+                    <Text as="dt" variant="bodyMd" tone="subdued">
+                      Email:
+                    </Text>
+                    <Text as="dd" variant="bodyMd">
+                      {selectedTicket.customerEmail}
+                    </Text>
+                  </InlineStack>
+                  <InlineStack gap="200">
+                    <Text as="dt" variant="bodyMd" tone="subdued">
+                      Teléfono:
+                    </Text>
+                    <Text as="dd" variant="bodyMd">
+                      {selectedTicket.customerPhone}
+                    </Text>
+                  </InlineStack>
+                </BlockStack>
+              </Card>
+
+              {/* Información del ticket */}
+              <Card>
+                <BlockStack gap="200">
+                  <Text as="h4" variant="headingMd">
+                    Información del Ticket
+                  </Text>
+                  <InlineStack gap="200">
+                    <Text as="dt" variant="bodyMd" tone="subdued">
+                      Motivo:
+                    </Text>
+                    <Text as="dd" variant="bodyMd">
+                      {selectedTicket.subject}
+                    </Text>
+                  </InlineStack>
+                  <InlineStack gap="200">
+                    <Text as="dt" variant="bodyMd" tone="subdued">
+                      Fecha:
+                    </Text>
+                    <Text as="dd" variant="bodyMd">
+                      {selectedTicket.date}
+                    </Text>
+                  </InlineStack>
+                  <BlockStack gap="200">
+                    <Text as="dt" variant="bodyMd" tone="subdued">
+                      Mensaje completo:
+                    </Text>
+                    <div
+                      style={{
+                        backgroundColor: "#f6f6f7",
+                        padding: "12px",
+                        borderRadius: "8px",
+                        maxHeight: "200px",
+                        overflowY: "auto",
+                      }}
+                    >
+                      <Text as="dd" variant="bodyMd">
+                        {selectedTicket.message}
+                      </Text>
+                    </div>
+                  </BlockStack>
+                </BlockStack>
+              </Card>
+
+              {/* Cambiar estado */}
+              <Card>
+                <BlockStack gap="200">
+                  <Text as="h4" variant="headingMd">
+                    Cambiar Estado
+                  </Text>
+                  <div style={{ width: "200px" }}>
+                    <Select
+                      label="Estado del ticket"
+                      options={[
+                        { label: "Pendiente", value: "PENDING" },
+                        { label: "En Progreso", value: "IN_PROGRESS" },
+                        { label: "Resuelto", value: "RESOLVED" },
+                        { label: "Cerrado", value: "CLOSED" },
+                      ]}
+                      value={selectedTicket.status}
+                      onChange={(value) => {
+                        updateTicketStatus(selectedTicket.id, value);
+                        setSelectedTicket({ ...selectedTicket, status: value });
+                      }}
+                    />
+                  </div>
+                </BlockStack>
+              </Card>
+            </BlockStack>
+          )}
+        </Modal.Section>
+      </Modal>
     </Page>
   );
 }

@@ -1,4 +1,4 @@
-// app/routes/api.create-ticket.tsx (MEJORADA)
+// app/routes/api.create-ticket.tsx (CORREGIDA FINAL)
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
@@ -18,13 +18,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     const body = await request.json();
-    const { shopId, customerEmail, subject, message } = body;
+    const {
+      shopId,
+      shopDomain,
+      customerEmail,
+      customerName,
+      customerPhone,
+      subject,
+      message,
+    } = body;
 
-    // Validación de parámetros requeridos
-    if (!shopId || !customerEmail || !subject || !message) {
+    // Validación de parámetros requeridos - acepta shopId O shopDomain
+    if ((!shopId && !shopDomain) || !customerEmail || !subject || !message) {
       console.log("❌ [API] Faltan parámetros:", {
         shopId: !!shopId,
+        shopDomain: !!shopDomain,
         customerEmail: !!customerEmail,
+        customerName: !!customerName,
+        customerPhone: !!customerPhone,
         subject: !!subject,
         message: !!message,
       });
@@ -32,7 +43,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         {
           success: false,
           error:
-            "Faltan parámetros requeridos (shopId, customerEmail, subject, message)",
+            "Faltan parámetros requeridos (shopId O shopDomain, customerEmail, subject, message)",
         },
         { status: 400, headers },
       );
@@ -51,14 +62,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    // Verificar que la tienda existe
+    // Verificar que la tienda existe - buscar por ID o dominio
     const shop = await db.shop.findUnique({
-      where: { id: shopId },
+      where: shopId ? { id: shopId } : { shop_domain: shopDomain },
       select: { id: true, shop_domain: true },
     });
 
     if (!shop) {
-      console.log("❌ [API] Tienda no encontrada:", shopId);
+      console.log("❌ [API] Tienda no encontrada:", shopId || shopDomain);
       return json(
         {
           success: false,
@@ -73,11 +84,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     console.log("📝 [API] Creando ticket para tienda:", shop.shop_domain);
 
-    // Crear el ticket
+    // Crear el ticket CON LOS NUEVOS CAMPOS
     const newTicket = await db.ticket.create({
       data: {
-        shop_id: shopId,
+        shop_id: shop.id, // ✅ Usar shop.id en lugar de shopId
         customer_email: customerEmail.trim().toLowerCase(),
+        customerName: customerName ? customerName.trim() : null, // ✅ Agregar customerName
+        customerPhone: customerPhone ? customerPhone.trim() : null, // ✅ Agregar customerPhone
+        shopDomain: shop.shop_domain, // ✅ Agregar shopDomain
         subject: subject.trim(),
         message: message.trim(),
         status: "PENDING",
@@ -86,6 +100,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       select: {
         id: true,
         customer_email: true,
+        customerName: true, // ✅ Incluir en select
+        customerPhone: true, // ✅ Incluir en select
+        shopDomain: true, // ✅ Incluir en select
         subject: true,
         status: true,
         created_at: true,
@@ -109,6 +126,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           id: newTicket.id,
           ticketNumber: ticketNumber, // Para mostrar al cliente
           customerEmail: newTicket.customer_email,
+          customerName: newTicket.customerName, // ✅ Ahora existe en el objeto
+          customerPhone: newTicket.customerPhone, // ✅ Ahora existe en el objeto
           subject: newTicket.subject,
           status: newTicket.status,
           createdAt: newTicket.created_at,
@@ -142,6 +161,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           { status: 409, headers },
         );
       }
+
+      // Log del error específico para debugging
+      console.error("💥 [API] Error detallado:", error.message);
     }
 
     return json(

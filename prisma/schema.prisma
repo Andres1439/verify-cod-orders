@@ -127,6 +127,10 @@ model Ticket {
   resolved_at    DateTime?
   closed_at      DateTime?
 
+  customerName   String?      // Nombre del cliente
+  customerPhone  String?      // Número de teléfono del cliente
+  shopDomain     String?      // Dominio de la tienda
+
   shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
 }
 

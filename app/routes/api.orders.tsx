@@ -1,4 +1,4 @@
-// app/routes/api.orders.tsx - VERSIÓN SIMPLIFICADA
+// app/routes/api.orders.tsx - CORREGIDA CON COUNTRY Y PROVINCE
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
@@ -17,7 +17,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     const body = await request.json();
 
-    // ✅ RECIBE PARÁMETROS PLANOS DIRECTAMENTE
+    // ✅ AGREGAR country y province AL DESTRUCTURING
     const {
       shopDomain,
       first_name,
@@ -27,6 +27,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       address1,
       city,
       zip,
+      country, // ← AGREGAR ESTO
+      province, // ← AGREGAR ESTO
       product_name,
       price,
       quantity,
@@ -42,6 +44,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       address1,
       city,
       zip,
+      country, // ← MOSTRAR EN LOG
+      province, // ← MOSTRAR EN LOG
       product_name,
       price,
       quantity,
@@ -88,6 +92,117 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       .padStart(3, "0");
     const internalOrderNumber = `ORD-${timestamp}-${random}`;
 
+    // ✅ FUNCIÓN PARA DETECTAR PAÍS Y PROVINCIA
+    const detectCountryAndProvince = (
+      city: string,
+      receivedCountry: string,
+      receivedProvince: string,
+    ) => {
+      const cityLower = (city || "").toLowerCase().trim();
+      let finalCountry = receivedCountry || "";
+      let finalProvince = receivedProvince || "";
+
+      console.log("[Detección] Ciudad recibida:", cityLower);
+      console.log("[Detección] País recibido:", receivedCountry);
+      console.log("[Detección] Provincia recibida:", receivedProvince);
+
+      // Si no hay país, detectar automáticamente
+      if (!finalCountry || finalCountry.trim() === "") {
+        // Ciudades de Colombia
+        const colombiaCities = [
+          "bogotá",
+          "bogota",
+          "medellín",
+          "medellin",
+          "cali",
+          "barranquilla",
+          "cartagena",
+          "bucaramanga",
+        ];
+        // Ciudades de Perú
+        const peruCities = [
+          "lima",
+          "arequipa",
+          "cusco",
+          "trujillo",
+          "piura",
+          "chiclayo",
+          "huancayo",
+          "iquitos",
+          "tacna",
+          "ayacucho",
+        ];
+        // Ciudades de México
+        const mexicoCities = [
+          "ciudad de méxico",
+          "guadalajara",
+          "monterrey",
+          "puebla",
+          "tijuana",
+          "león",
+          "juárez",
+        ];
+
+        if (colombiaCities.some((colCity) => cityLower.includes(colCity))) {
+          finalCountry = "CO";
+          // Detectar departamento de Colombia
+          if (cityLower.includes("bogotá") || cityLower.includes("bogota")) {
+            finalProvince = "Cundinamarca";
+          } else if (
+            cityLower.includes("medellín") ||
+            cityLower.includes("medellin")
+          ) {
+            finalProvince = "Antioquia";
+          } else if (cityLower.includes("cali")) {
+            finalProvince = "Valle del Cauca";
+          } else if (cityLower.includes("barranquilla")) {
+            finalProvince = "Atlántico";
+          } else if (cityLower.includes("cartagena")) {
+            finalProvince = "Bolívar";
+          }
+        } else if (
+          peruCities.some((peruCity) => cityLower.includes(peruCity))
+        ) {
+          finalCountry = "PE";
+          // Detectar departamento de Perú
+          if (cityLower.includes("lima")) {
+            finalProvince = "Lima";
+          } else if (cityLower.includes("arequipa")) {
+            finalProvince = "Arequipa";
+          } else if (cityLower.includes("cusco")) {
+            finalProvince = "Cusco";
+          } else if (cityLower.includes("ayacucho")) {
+            finalProvince = "Ayacucho";
+          }
+        } else if (
+          mexicoCities.some((mexCity) => cityLower.includes(mexCity))
+        ) {
+          finalCountry = "MX";
+          // Detectar estado de México
+          if (cityLower.includes("ciudad de méxico")) {
+            finalProvince = "Ciudad de México";
+          } else if (cityLower.includes("guadalajara")) {
+            finalProvince = "Jalisco";
+          } else if (cityLower.includes("monterrey")) {
+            finalProvince = "Nuevo León";
+          }
+        } else {
+          // Por defecto Perú
+          finalCountry = "PE";
+          finalProvince = "Lima";
+        }
+      }
+
+      console.log("[Detección] País final:", finalCountry);
+      console.log("[Detección] Provincia final:", finalProvince);
+
+      return { country: finalCountry, province: finalProvince };
+    };
+
+    // ✅ APLICAR DETECCIÓN
+    const { country: detectedCountry, province: detectedProvince } =
+      detectCountryAndProvince(city, country, province);
+
     // Preparar datos para la base de datos
     const customerName = `${first_name || "Cliente"} ${last_name || "Chatbot"}`;
     const shippingAddress = {
@@ -95,8 +210,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       lastName: last_name || "Chatbot",
       address1: address1 || "Dirección pendiente",
       city: city || "Lima",
-      province: "LIM",
-      country: "PE",
+      province: detectedProvince, // ✅ USAR PROVINCIA DETECTADA
+      country: detectedCountry, // ✅ USAR PAÍS DETECTADO
       zip: zip || "15001",
       phone: phone || "",
     };
@@ -136,6 +251,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       customer_name: orderConfirmation.customer_name,
       total: orderConfirmation.order_total,
       status: orderConfirmation.status,
+      country: detectedCountry, // ✅ MOSTRAR EN LOG
+      province: detectedProvince, // ✅ MOSTRAR EN LOG
     });
 
     // Respuesta exitosa
@@ -145,7 +262,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         type: "order_confirmation",
         orderConfirmation: {
           id: orderConfirmation.id,
-          internalOrderNumber: orderConfirmation.internal_order_number,
           status: orderConfirmation.status,
           total: orderConfirmation.order_total.toString(),
           currency: "USD",
@@ -156,6 +272,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           name: orderConfirmation.customer_name,
           email: orderConfirmation.customer_email,
           phone: orderConfirmation.customer_phone,
+          country: detectedCountry, // ✅ INCLUIR EN RESPUESTA
+          province: detectedProvince, // ✅ INCLUIR EN RESPUESTA
+        },
+        shippingAddress: {
+          city: city,
+          country: detectedCountry,
+          province: detectedProvince,
         },
         items: [
           {
@@ -168,18 +291,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ],
         tracking: {
           confirmationId: orderConfirmation.id,
-          internalOrderNumber: orderConfirmation.internal_order_number,
           shopifyOrderId: null,
           shopifyOrderName: null,
         },
         nextSteps: {
-          message: `📋 Pre-orden ${orderConfirmation.internal_order_number} registrada exitosamente.\n\n📞 Un agente te contactará en las próximas 2 horas para confirmar tu pedido y procesar el pago.\n\n⏱️ Esta pre-orden expira el ${orderConfirmation.expires_at?.toLocaleDateString("es-PE")}.`,
+          message: `✅ Orden registrada exitosamente - Nos contactaremos contigo a la brevedad, para confirmar tu pedido por llamada. Gracias por contactarnos`,
           callScheduled: true,
           expiresAt: orderConfirmation.expires_at,
           isPreOrder: true,
           requiresConfirmation: true,
           status: "PENDING_CALL",
-          estimatedCallTime: "2 horas",
+          estimatedCallTime: "a la brevedad",
         },
       },
       { headers },
@@ -188,7 +310,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     console.error("[API Orders] ❌ Error crítico:", error);
     return json(
       {
-        error: "Error interno del servidor al crear la pre-orden",
+        error: "Error interno del servidor al crear la orden",
         message: error instanceof Error ? error.message : "Unknown error",
         timestamp: new Date().toISOString(),
       },
