@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-// app/routes/app.whatsapp.tsx - VERSIÓN FINAL SIN MÉTRICAS
+// app/routes/app.whatsapp.tsx - VERSIÓN CON TIPOS CORREGIDOS
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useActionData, Form } from "@remix-run/react";
@@ -30,6 +30,24 @@ import {
   CalendarIcon,
   InfoIcon,
 } from "@shopify/polaris-icons";
+
+// 🔧 TIPOS PARA LAS RESPUESTAS
+type SuccessResponse = {
+  success: true;
+  message: string;
+  type: string;
+  phoneNumber?: string;
+  assignedAt?: string;
+  welcomeMessage?: string;
+};
+
+type ErrorResponse = {
+  error: string;
+  type?: string;
+  currentNumber?: string;
+};
+
+type ActionResponse = SuccessResponse | ErrorResponse;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -67,92 +85,77 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   });
 
   if (!shopData) {
-    return json({ error: "Tienda no encontrada" }, { status: 404 });
+    return json<ErrorResponse>(
+      { error: "Tienda no encontrada" },
+      { status: 404 },
+    );
   }
 
   try {
     if (action === "request_number") {
-      // 1. Verificar si ya tiene número
-      const existingNumber = await db.twilioNumber.findFirst({
-        where: { shop_id: shopData.id },
-      });
+      console.log(`🎯 Solicitud de número para: ${shop}`);
 
-      if (existingNumber) {
-        return json(
-          {
-            error: "Ya tienes un número WhatsApp asignado",
-            type: "already_assigned",
-          },
-          { status: 400 },
-        );
-      }
-
-      // 2. Buscar número disponible
-      const availableNumber = await db.twilioNumber.findFirst({
-        where: {
-          status: "AVAILABLE",
-          shop_id: null,
-        },
-        orderBy: { created_at: "asc" },
-      });
-
-      if (!availableNumber) {
-        return json(
-          {
-            error: "Servicio temporalmente no disponible. Contacta soporte.",
-            type: "no_numbers",
-          },
-          { status: 503 },
-        );
-      }
-
-      // 3. Asignar número
-      const assignedNumber = await db.twilioNumber.update({
-        where: { id: availableNumber.id },
-        data: {
-          shop_id: shopData.id,
-          status: "ASSIGNED",
-          assigned_at: new Date(),
-        },
-      });
-
-      // 4. Crear configuración WhatsApp
-      await db.whatsAppConfiguration.create({
-        data: {
-          shop_id: shopData.id,
-          enabled: true,
-          welcome_message:
-            "¡Hola! Gracias por contactar nuestra tienda. ¿En qué puedo ayudarte?",
-          business_hours: {
-            open: "09:00",
-            close: "18:00",
-          },
-        },
-      });
-
-      // 5. Notificar a N8N del nuevo número asignado
-      if (process.env.N8N_WEBHOOK_URL) {
-        fetch(process.env.N8N_WEBHOOK_URL + "/shop-assigned", {
+      try {
+        // 🔥 Llamar al API para asignar número
+        const baseUrl = new URL(request.url).origin;
+        const response = await fetch(`${baseUrl}/api/whatsapp-info`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: "number_assigned",
-            shopId: shopData.id,
-            shopDomain: shopData.shop_domain,
-            phoneNumber: assignedNumber.phone_number,
-            twilioSid: assignedNumber.twilio_sid,
-            welcomeMessage:
-              "¡Hola! Gracias por contactar nuestra tienda. ¿En qué puedo ayudarte?",
+            action: "assign_number",
+            shop_domain: shop,
           }),
-        }).catch(console.error);
-      }
+        });
 
-      return json({
-        success: true,
-        message: `¡Número WhatsApp asignado! Tu número ${assignedNumber.phone_number} ya está funcionando.`,
-        type: "number_assigned",
-        phoneNumber: assignedNumber.phone_number,
-      });
+        const result = await response.json();
+
+        if (!response.ok) {
+          console.log(`❌ Error asignando: ${result.error}`);
+
+          if (result.current_number) {
+            // Ya tiene número asignado
+            return json<ErrorResponse>(
+              {
+                error: `Ya tienes el número ${result.current_number} asignado`,
+                type: "already_assigned",
+                currentNumber: result.current_number,
+              },
+              { status: 400 },
+            );
+          }
+
+          // No hay números disponibles
+          return json<ErrorResponse>(
+            {
+              error:
+                result.error ||
+                "Servicio temporalmente no disponible. Contacta soporte.",
+              type: "no_numbers",
+            },
+            { status: response.status },
+          );
+        }
+
+        // ✅ Asignación exitosa
+        console.log(
+          `✅ Número asignado exitosamente: ${result.data?.phoneNumber}`,
+        );
+
+        return json<SuccessResponse>({
+          success: true,
+          message: `¡Número WhatsApp asignado! Tu número ${result.data?.phoneNumber} ya está funcionando.`,
+          type: "number_assigned",
+          phoneNumber: result.data?.phoneNumber,
+          assignedAt: result.data?.assignedAt,
+          welcomeMessage: result.data?.welcomeMessage,
+        });
+      } catch (error) {
+        console.error("❌ Error llamando API:", error);
+        return json<ErrorResponse>(
+          { error: "Error interno del servidor", type: "server_error" },
+          { status: 500 },
+        );
+      }
     }
 
     if (action === "update_config") {
@@ -182,7 +185,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         },
       });
 
-      // Notificar cambios a N8N
+      // Notificar cambios a N8N (opcional)
       if (process.env.N8N_WEBHOOK_URL) {
         fetch(process.env.N8N_WEBHOOK_URL + "/config-updated", {
           method: "POST",
@@ -196,26 +199,41 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }).catch(console.error);
       }
 
-      return json({
+      return json<SuccessResponse>({
         success: true,
         message: "Configuración actualizada exitosamente",
         type: "config_updated",
       });
     }
 
-    return json({ error: "Acción no válida" }, { status: 400 });
+    return json<ErrorResponse>(
+      { error: "Acción no válida", type: "invalid_action" },
+      { status: 400 },
+    );
   } catch (error) {
     console.error("Error en WhatsApp action:", error);
-    return json({ error: "Error interno del servidor" }, { status: 500 });
+    return json<ErrorResponse>(
+      { error: "Error interno del servidor", type: "server_error" },
+      { status: 500 },
+    );
   }
 };
 
 export default function WhatsAppPage() {
   const { shop, hasWhatsAppNumber, whatsappConfig, assignedNumber } =
     useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
+  const actionData = useActionData<ActionResponse>();
 
   const businessHours = whatsappConfig?.business_hours as any;
+
+  // 🔧 Helper functions para type guards
+  const isSuccessResponse = (data: ActionResponse): data is SuccessResponse => {
+    return "success" in data && data.success === true;
+  };
+
+  const isErrorResponse = (data: ActionResponse): data is ErrorResponse => {
+    return "error" in data;
+  };
 
   return (
     <Page>
@@ -223,12 +241,44 @@ export default function WhatsAppPage() {
 
       <BlockStack gap="500">
         {/* Banner de estado */}
-        {actionData && "success" in actionData && actionData.success && (
-          <Banner tone="success">{actionData.message}</Banner>
+        {actionData && isSuccessResponse(actionData) && (
+          <Banner tone="success">
+            {actionData.message}
+            {actionData.type === "number_assigned" &&
+              actionData.phoneNumber && (
+                <div style={{ marginTop: "8px" }}>
+                  <Text as="p" variant="bodySm">
+                    🎉 ¡Tu número {actionData.phoneNumber} está listo para
+                    recibir mensajes!
+                  </Text>
+                  <Text as="p" variant="bodySm">
+                    📱 Compártelo con tus clientes para que puedan contactarte
+                    directamente.
+                  </Text>
+                </div>
+              )}
+          </Banner>
         )}
 
-        {actionData && "error" in actionData && actionData.error && (
-          <Banner tone="critical">{actionData.error}</Banner>
+        {actionData && isErrorResponse(actionData) && (
+          <Banner tone="critical">
+            {actionData.error}
+            {actionData.type === "no_numbers" && (
+              <div style={{ marginTop: "8px" }}>
+                <Text as="p" variant="bodySm">
+                  📧 Contacta a soporte técnico para obtener un número WhatsApp.
+                </Text>
+              </div>
+            )}
+            {actionData.type === "already_assigned" &&
+              actionData.currentNumber && (
+                <div style={{ marginTop: "8px" }}>
+                  <Text as="p" variant="bodySm">
+                    📱 Tu número asignado es: {actionData.currentNumber}
+                  </Text>
+                </div>
+              )}
+          </Banner>
         )}
 
         {/* Card principal - Estado del número */}
@@ -469,6 +519,7 @@ export default function WhatsAppPage() {
                           },
                           { label: "17:00 PM", value: "17:00" },
                           { label: "18:00 PM", value: "18:00" },
+                          { label: "19:00 PM", value: "20:00" },
                           { label: "19:00 PM", value: "19:00" },
                           { label: "20:00 PM", value: "20:00" },
                           { label: "21:00 PM", value: "21:00" },
