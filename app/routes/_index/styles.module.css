@@ -1,11 +1,25 @@
+/* Global styles to ensure black background everywhere */
+:global(body),
+:global(html) {
+  background: #000000 !important;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  width: 100%;
+}
+
 .index {
   align-items: center;
   display: flex;
   justify-content: center;
-  height: 100%;
+  min-height: 100vh;
   width: 100%;
+  max-width: 100vw;
   text-align: center;
-  padding: 1rem;
+  padding: 2rem;
+  background: #000000;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .heading,
@@ -15,59 +29,381 @@
 }
 
 .text {
-  font-size: 1.2rem;
-  padding-bottom: 2rem;
+  font-size: 1.3rem;
+  margin: 0 0 2rem 0;
+  opacity: 0.9;
+  line-height: 1.5;
+  word-wrap: break-word;
 }
 
 .content {
   display: grid;
+  gap: 3rem;
+  max-width: 1200px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 1rem;
+}
+
+/* Hero Section */
+.hero {
+  background: #1a1a1a;
+  border-radius: 20px;
+  padding: 3rem 2rem;
+  color: white;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  border: 1px solid #333;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.heading {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0 0 1rem 0;
+  line-height: 1.2;
+  word-wrap: break-word;
+}
+
+.features {
+  display: flex;
+  justify-content: center;
   gap: 2rem;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+  width: 100%;
+}
+
+.feature {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.featureIcon {
+  font-size: 1.2rem;
+}
+
+/* Form Container */
+.formContainer {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.formCard {
+  background: #1a1a1a;
+  border-radius: 16px;
+  padding: 2.5rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-width: 500px;
+  border: 1px solid #333;
+  box-sizing: border-box;
+}
+
+.formTitle {
+  font-size: 1.8rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  color: white;
+  word-wrap: break-word;
+}
+
+.formSubtitle {
+  font-size: 1rem;
+  color: #ccc;
+  margin: 0 0 2rem 0;
+  word-wrap: break-word;
 }
 
 .form {
   display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  margin: 0 auto;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
 }
 
 .label {
-  display: grid;
-  gap: 0.2rem;
-  max-width: 20rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
   text-align: left;
+  width: 100%;
+}
+
+.labelText {
+  font-weight: 600;
+  color: white;
   font-size: 1rem;
 }
 
 .input {
-  padding: 0.4rem;
+  padding: 1rem;
+  border: 2px solid #333;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: border-color 0.3s ease;
+  background: #2a2a2a;
+  color: white;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #666;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+}
+
+.input::placeholder {
+  color: #888;
+}
+
+.helpText {
+  font-size: 0.875rem;
+  color: #888;
 }
 
 .button {
-  padding: 0.4rem;
+  background: #333;
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+  background: #444;
+}
+
+/* Features Section */
+.featuresSection {
+  background: #1a1a1a;
+  border-radius: 16px;
+  padding: 2.5rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  border: 1px solid #333;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.sectionTitle {
+  font-size: 2rem;
+  font-weight: 600;
+  margin: 0 0 2rem 0;
+  color: white;
+  text-align: center;
+  word-wrap: break-word;
 }
 
 .list {
   list-style: none;
   padding: 0;
-  padding-top: 3rem;
   margin: 0;
-  display: flex;
+  display: grid;
   gap: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  width: 100%;
 }
 
-.list > li {
-  max-width: 20rem;
-  text-align: left;
+.listItem {
+  display: flex;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: #2a2a2a;
+  border-radius: 12px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border: 1px solid #333;
+  box-sizing: border-box;
+  width: 100%;
 }
 
-@media only screen and (max-width: 50rem) {
-  .list {
-    display: block;
+.listItem:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  background: #333;
+}
+
+.itemIcon {
+  font-size: 2rem;
+  flex-shrink: 0;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #333;
+  border-radius: 50%;
+  color: white;
+}
+
+.itemContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.itemContent strong {
+  display: block;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 0.5rem;
+  word-wrap: break-word;
+}
+
+.itemContent p {
+  margin: 0;
+  color: #ccc;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+/* Responsive Design */
+@media only screen and (max-width: 1024px) {
+  .content {
+    gap: 2rem;
+    padding: 0 0.5rem;
   }
+  
+  .hero {
+    padding: 2.5rem 1.5rem;
+  }
+  
+  .formCard {
+    padding: 2rem;
+  }
+  
+  .featuresSection {
+    padding: 2rem;
+  }
+}
 
-  .list > li {
-    padding-bottom: 1rem;
+@media only screen and (max-width: 768px) {
+  .index {
+    padding: 1rem;
+  }
+  
+  .content {
+    padding: 0;
+  }
+  
+  .heading {
+    font-size: 2rem;
+  }
+  
+  .text {
+    font-size: 1.1rem;
+  }
+  
+  .features {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .formCard {
+    padding: 1.5rem;
+  }
+  
+  .list {
+    grid-template-columns: 1fr;
+  }
+  
+  .listItem {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .itemIcon {
+    margin: 0 auto;
+  }
+  
+  .sectionTitle {
+    font-size: 1.8rem;
+  }
+}
+
+@media only screen and (max-width: 480px) {
+  .index {
+    padding: 0.5rem;
+  }
+  
+  .hero {
+    padding: 2rem 1rem;
+    border-radius: 12px;
+  }
+  
+  .heading {
+    font-size: 1.8rem;
+  }
+  
+  .text {
+    font-size: 1rem;
+  }
+  
+  .formCard {
+    padding: 1.5rem;
+    border-radius: 12px;
+  }
+  
+  .featuresSection {
+    padding: 1.5rem;
+    border-radius: 12px;
+  }
+  
+  .formTitle {
+    font-size: 1.5rem;
+  }
+  
+  .sectionTitle {
+    font-size: 1.6rem;
+  }
+  
+  .listItem {
+    padding: 1rem;
+  }
+  
+  .itemIcon {
+    width: 50px;
+    height: 50px;
+    font-size: 1.5rem;
+  }
+}
+
+@media only screen and (max-width: 360px) {
+  .hero {
+    padding: 1.5rem 0.75rem;
+  }
+  
+  .heading {
+    font-size: 1.6rem;
+  }
+  
+  .formCard {
+    padding: 1rem;
+  }
+  
+  .featuresSection {
+    padding: 1rem;
+  }
+  
+  .input {
+    padding: 0.75rem;
+  }
+  
+  .button {
+    padding: 0.75rem 1.5rem;
   }
 }
