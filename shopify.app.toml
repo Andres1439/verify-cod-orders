@@ -1,45 +1,40 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "41005ee4ea0dade72d57a6c0fd641b45"
-name = "Verify COD Orders"
+name = "Verify COD Orders" 
 handle = "verify-cod-orders-4"
-application_url = "https://rabbit-demand-fragrance-eau.trycloudflare.com"
+application_url = "https://verify-cod-orders-production.up.railway.app"
 embedded = true
 
 [build]
+automatically_update_urls_on_dev = false
 include_config_on_deploy = true
-automatically_update_urls_on_dev = true
 
 [webhooks]
 api_version = "2025-04"
 
   [[webhooks.subscriptions]]
-  topics = [ "app/uninstalled" ]
-  uri = "/webhooks/app/uninstalled"
+  uri = "/webhooks"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
 
   [[webhooks.subscriptions]]
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
-  # Webhooks de cumplimiento GDPR (ya implementados)
   [[webhooks.subscriptions]]
-  topics = [ "customers/data_request" ]
-  uri = "/webhooks"
-
-  [[webhooks.subscriptions]]
-  topics = [ "customers/redact" ]
-  uri = "/webhooks"
-
-  [[webhooks.subscriptions]]
-  topics = [ "shop/redact" ]
-  uri = "/webhooks"
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_inventory,read_orders,read_products,write_orders,write_customers,read_customers"
+scopes = "read_customers,read_inventory,read_orders,read_products,write_customers,write_orders"
 
 [auth]
-redirect_urls = ["https://rabbit-demand-fragrance-eau.trycloudflare.com/auth/callback", "https://rabbit-demand-fragrance-eau.trycloudflare.com/auth/shopify/callback", "https://rabbit-demand-fragrance-eau.trycloudflare.com/api/auth/callback"]
+redirect_urls = [
+  "https://verify-cod-orders-production.up.railway.app/auth/callback",
+  "https://verify-cod-orders-production.up.railway.app/auth/shopify/callback", 
+  "https://verify-cod-orders-production.up.railway.app/api/auth/callback"
+]
 
 [pos]
 embedded = false
