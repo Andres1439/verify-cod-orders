@@ -49,14 +49,6 @@ enum CallStatus {
   FAILED
 }
 
-// NUEVOS ENUMS PARA TWILIO
-enum TwilioNumberStatus {
-  AVAILABLE    // Número comprado pero no asignado
-  ASSIGNED     // Asignado a una tienda
-  SUSPENDED    // Temporalmente suspendido
-  CANCELLED    // Cancelado/liberado
-}
-
 // MODELS
 model Session {
   id            String    @id
@@ -92,9 +84,8 @@ model Shop {
   order_confirmations   OrderConfirmation[]
   telnyx_configuration  TelnyxConfiguration?
   
-  // NUEVAS RELACIONES WHATSAPP/TWILIO
-  whatsapp_configuration WhatsAppConfiguration?
-  twilio_number          TwilioNumber?
+  // NUEVAS RELACIONES WHATSAPP
+  whatsapp_configuration WhatsappBusinessConfig?
 }
 
 model ChatbotConfiguration {
@@ -207,64 +198,33 @@ model ConfirmationCall {
   order_confirmation OrderConfirmation @relation(fields: [order_confirmation_id], references: [id], onDelete: Cascade)
 }
 
-// NUEVAS TABLAS WHATSAPP/TWILIO
+// NUEVAS TABLAS WHATSAPP
 
-// TABLA 1: CONFIGURACIÓN WHATSAPP POR TIENDA
-model WhatsAppConfiguration {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  shop_id         String   @unique @db.Uuid
-  
+model WhatsappBusinessConfig {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shop_id           String   @unique @db.Uuid
+
   // Configuración básica
-  enabled         Boolean  @default(true)
-  welcome_message String   @default("¡Hola! ¿En qué puedo ayudarte?")
-  
-  // Configuración opcional
-  business_hours  Json?    // {"open": "09:00", "close": "18:00"}
-  auto_responses  Json?    // Respuestas automáticas
-  
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
-  
-  // Relación
-  shop            Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
-}
+  enabled           Boolean  @default(true)
+  welcome_message   String   @default("¡Hola! ¿En qué puedo ayudarte?")
+  business_hours    Json?
+  auto_responses    Json?
 
-// TABLA 2: NÚMEROS DE TWILIO (POOL DE NÚMEROS)
-model TwilioNumber {
-  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  
-  // Datos del número en Twilio
-  phone_number    String            @unique // "+15551234567"
-  twilio_sid      String            @unique // Identificador único en Twilio
-  friendly_name   String?           // Nombre amigable en Twilio
-  
-  // Configuración del webhook
-  webhook_url     String?           // URL del webhook de N8N
-  
-  // Estado del número
-  status          TwilioNumberStatus @default(AVAILABLE)
-  
-  // Asignación a tienda (nullable)
-  shop_id         String?           @unique @db.Uuid // Solo una tienda por número
-  assigned_at     DateTime?         // Cuándo se asignó
-  
-  // Costos y facturación
-  monthly_cost    Decimal           @db.Decimal(8, 2) // Costo mensual en USD
-  purchased_at    DateTime          @default(now())
-  next_billing    DateTime?         // Próxima fecha de facturación
-  
-  // Metadatos
-  country_code    String            @default("US") // País del número
-  number_type     String            @default("local") // "local", "toll-free", "mobile"
-  capabilities    Json?             // {"sms": true, "voice": true, "mms": true}
-  
-  created_at      DateTime          @default(now())
-  updated_at      DateTime          @updatedAt
-  
-  // Relación opcional con tienda
-  shop            Shop?             @relation(fields: [shop_id], references: [id], onDelete: SetNull)
-  
-  @@index([status])
-  @@index([shop_id])
-  @@index([phone_number])
+  // Credenciales de Meta Business
+  accessToken       String?  @db.Text
+  phoneNumberId     String?
+  businessAccountId String?
+  webhookToken      String?
+  businessName      String?
+  agentPrompt       String?  @db.Text
+
+  // Estado de verificación
+  isVerified        Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  lastVerified      DateTime?
+
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  shop              Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
 }

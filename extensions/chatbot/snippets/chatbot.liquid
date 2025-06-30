@@ -12,8 +12,7 @@
   async function fetchChatbotConfiguration(shopDomain) {
     // ✅ URLs desde variables de entorno
     const apiUrls = [
-      `${window.CHATBOT_API_BASE_URL || 'https://libraries-printer-measuring-sentence.trycloudflare.com'}/api/chatbot-config?shop=${shopDomain}`,
-      `${window.CHATBOT_API_FALLBACK_URL || 'http://localhost:3000'}/api/chatbot-config?shop=${shopDomain}`, // fallback local
+      `${window.CHATBOT_API_BASE_URL || 'https://changelog-drink-furnished-job.trycloudflare.com'}/api/chatbot-config?shop=${shopDomain}`,
     ];
     
     for (const apiUrl of apiUrls) {

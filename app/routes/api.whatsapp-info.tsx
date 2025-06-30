@@ -1,9 +1,9 @@
-// app/routes/api.whatsapp-info.tsx
+// app/routes/api.whatsapp-info.tsx - VERSIÓN META BUSINESS
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
 
-// 🔍 GET: Para N8N - Obtener info de la tienda por número de WhatsApp
+// 🔍 GET: Para N8N - Obtener info de la tienda por Phone Number ID de Meta
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const headers = new Headers();
   headers.append("Access-Control-Allow-Origin", "*");
@@ -11,214 +11,205 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   try {
     const url = new URL(request.url);
-    const phoneNumber = url.searchParams.get("phone");
+    const phoneNumberId = url.searchParams.get("phoneNumberId");
 
-    if (!phoneNumber) {
+    if (!phoneNumberId) {
       return json(
-        { error: "Parámetro 'phone' requerido" },
+        { error: "Parámetro 'phoneNumberId' requerido" },
         { status: 400, headers },
       );
     }
 
-    console.log("🔍 N8N consultando info para número:", phoneNumber);
+    console.log("🔍 N8N consultando info para Phone Number ID:", phoneNumberId);
 
-    // Normalizar número (quitar espacios y caracteres especiales)
-    const normalizedPhone = phoneNumber.replace(/[^\d+]/g, "");
-
-    // Buscar información de la tienda por número
-    const numberInfo = await db.twilioNumber.findFirst({
+    // Buscar configuración WhatsApp por phoneNumberId
+    const whatsappConfig = await db.whatsappBusinessConfig.findFirst({
       where: {
-        OR: [{ phone_number: phoneNumber }, { phone_number: normalizedPhone }],
-        status: "ASSIGNED", // Solo números asignados
+        phoneNumberId: phoneNumberId,
+        isActive: true,
+        isVerified: true
       },
       include: {
         shop: {
-          include: {
-            whatsapp_configuration: true,
-          },
-        },
-      },
+          select: {
+            id: true,
+            shop_domain: true,
+            access_token: true,
+            subscription_plan: true,
+          }
+        }
+      }
     });
 
-    if (!numberInfo || !numberInfo.shop) {
-      console.log("❌ Número no encontrado o no asignado:", phoneNumber);
+    if (!whatsappConfig) {
+      console.log("❌ Phone Number ID no encontrado:", phoneNumberId);
+      
       return json(
         {
-          error: "Número no encontrado o no asignado",
-          message: `El número ${phoneNumber} no está registrado en nuestro sistema`,
+          error: "Phone Number ID no encontrado o no configurado",
+          message: `El Phone Number ID ${phoneNumberId} no está registrado en nuestro sistema`,
+          phoneNumberId
         },
         { status: 404, headers },
       );
     }
 
-    const shop = numberInfo.shop;
-    const config = shop.whatsapp_configuration;
+    // ✅ CONFIGURACIÓN ENCONTRADA
+    const shop = whatsappConfig.shop;
 
-    console.log("✅ Tienda encontrada:", shop.shop_domain);
+    console.log("✅ Phone Number ID encontrado:", phoneNumberId);
+    console.log("✅ Tienda:", shop.shop_domain);
+    console.log("✅ Verificado:", whatsappConfig.isVerified);
 
-    // Información que N8N necesita para responder
-    return json(
-      {
-        success: true,
-        shopInfo: {
-          id: shop.id,
-          shop_domain: shop.shop_domain, // Consistente con N8N
-          access_token: shop.access_token,
-          subscription_plan: shop.subscription_plan,
-        },
-        whatsappConfig: {
-          enabled: config?.enabled || true,
-          welcome_message:
-            config?.welcome_message || "¡Hola! ¿En qué puedo ayudarte?",
-          business_hours: config?.business_hours || {
-            open: "09:00",
-            close: "18:00",
-          },
-          auto_responses: config?.auto_responses || {},
-        },
-        numberInfo: {
-          phoneNumber: numberInfo.phone_number,
-          twilioSid: numberInfo.twilio_sid,
-          status: numberInfo.status,
-          assigned_at: numberInfo.assigned_at,
-        },
+    // Preparar respuesta para N8N
+    const response = {
+      success: true,
+      shopInfo: {
+        id: shop.id,
+        shop_domain: shop.shop_domain,
+        access_token: shop.access_token,
+        subscription_plan: shop.subscription_plan || "BASIC",
       },
-      { headers },
-    );
+      whatsappConfig: {
+        enabled: whatsappConfig.enabled,
+        welcome_message: whatsappConfig.welcome_message,
+        business_hours: whatsappConfig.business_hours || {
+          open: "00:00",
+          close: "00:00",
+        },
+        auto_responses: whatsappConfig.auto_responses || {},
+        businessName: whatsappConfig.businessName,
+        agentPrompt: whatsappConfig.agentPrompt,
+      },
+      metaInfo: {
+        phoneNumberId: whatsappConfig.phoneNumberId,
+        businessAccountId: whatsappConfig.businessAccountId,
+        isVerified: whatsappConfig.isVerified,
+        lastVerified: whatsappConfig.lastVerified,
+      },
+      // Información adicional para N8N
+      context: {
+        timestamp: new Date().toISOString(),
+        source: "meta_business_api"
+      }
+    };
+
+    return json(response, { headers });
+
   } catch (error) {
     console.error("❌ Error en API WhatsApp info:", error);
     return json(
-      { error: "Error interno del servidor" },
+      { 
+        error: "Error interno del servidor",
+        details: error instanceof Error ? error.message : "Error desconocido"
+      },
       { status: 500, headers },
     );
   }
 };
 
-// 🎯 POST: Para Dashboard - Asignar número a una tienda
+// 🎯 POST: Para Dashboard - Configurar WhatsApp Business con Meta
 export const action = async ({ request }: ActionFunctionArgs) => {
   const headers = new Headers();
   headers.append("Access-Control-Allow-Origin", "*");
   headers.append("Content-Type", "application/json");
 
   try {
-    const { action, shop_domain } = await request.json();
+    const { action, shop_domain, metaConfig } = await request.json();
 
-    if (action !== "assign_number" || !shop_domain) {
-      return json(
-        { error: "Acción o shop_domain faltante" },
-        { status: 400, headers },
-      );
-    }
+    if (action === "configure_whatsapp" && shop_domain && metaConfig) {
+      console.log(`🎯 Configurando WhatsApp para: ${shop_domain}`);
 
-    console.log(`🎯 Asignando número para: ${shop_domain}`);
+      // 1. Buscar la tienda
+      const shop = await db.shop.findUnique({
+        where: { shop_domain },
+        include: { whatsapp_configuration: true },
+      });
 
-    // 1. Buscar la tienda
-    const shop = await db.shop.findUnique({
-      where: { shop_domain },
-      include: { twilio_number: true },
-    });
+      if (!shop) {
+        console.log(`❌ Tienda no encontrada: ${shop_domain}`);
+        return json({ error: "Tienda no encontrada" }, { status: 404, headers });
+      }
 
-    if (!shop) {
-      console.log(`❌ Tienda no encontrada: ${shop_domain}`);
-      return json({ error: "Tienda no encontrada" }, { status: 404, headers });
-    }
+      // 2. Validar credenciales de Meta Business
+      const validation = await validateMetaCredentials({
+        accessToken: metaConfig.accessToken,
+        phoneNumberId: metaConfig.phoneNumberId,
+      });
 
-    // 2. Verificar si ya tiene número
-    if (shop.twilio_number) {
-      console.log(`⚠️ Ya tiene número: ${shop.twilio_number.phone_number}`);
+      if (!validation.success) {
+        return json(
+          { 
+            error: "Credenciales de Meta Business inválidas",
+            details: validation.error 
+          },
+          { status: 400, headers }
+        );
+      }
+
+      // 3. Guardar/actualizar configuración
+      const whatsappConfig = await db.whatsappBusinessConfig.upsert({
+        where: { shop_id: shop.id },
+        update: {
+          accessToken: metaConfig.accessToken,
+          phoneNumberId: metaConfig.phoneNumberId,
+          businessAccountId: metaConfig.businessAccountId,
+          webhookToken: metaConfig.webhookToken || generateWebhookToken(),
+          businessName: metaConfig.businessName || shop.shop_domain.replace('.myshopify.com', ''),
+          agentPrompt: metaConfig.agentPrompt || getDefaultPrompt(),
+          welcome_message: metaConfig.welcomeMessage || `¡Hola! Gracias por contactar ${shop.shop_domain.replace('.myshopify.com', '')}. ¿En qué puedo ayudarte? 🛍️`,
+          isVerified: true,
+          isActive: true,
+          lastVerified: new Date(),
+        },
+        create: {
+          shop_id: shop.id,
+          accessToken: metaConfig.accessToken,
+          phoneNumberId: metaConfig.phoneNumberId,
+          businessAccountId: metaConfig.businessAccountId,
+          webhookToken: metaConfig.webhookToken || generateWebhookToken(),
+          businessName: metaConfig.businessName || shop.shop_domain.replace('.myshopify.com', ''),
+          agentPrompt: metaConfig.agentPrompt || getDefaultPrompt(),
+          welcome_message: metaConfig.welcomeMessage || `¡Hola! Gracias por contactar ${shop.shop_domain.replace('.myshopify.com', '')}. ¿En qué puedo ayudarte? 🛍️`,
+          enabled: true,
+          isVerified: true,
+          isActive: true,
+          lastVerified: new Date(),
+        },
+      });
+
+      // 4. Configurar webhook en Meta automáticamente
+      await setupMetaWebhook({
+        accessToken: metaConfig.accessToken,
+        phoneNumberId: metaConfig.phoneNumberId,
+        webhookToken: whatsappConfig.webhookToken as string,
+      });
+
+      console.log(`✅ WhatsApp configurado exitosamente para ${shop_domain}`);
+
       return json(
         {
-          success: false,
-          error: "Ya tienes un número WhatsApp asignado",
-          current_number: shop.twilio_number.phone_number,
-          assigned_at: shop.twilio_number.assigned_at,
+          success: true,
+          message: `WhatsApp Business configurado exitosamente`,
+          data: {
+            phoneNumberId: whatsappConfig.phoneNumberId,
+            businessName: whatsappConfig.businessName,
+            shop_domain: shop.shop_domain,
+            displayPhoneNumber: validation.phoneNumber,
+            verifiedAt: whatsappConfig.lastVerified,
+          },
         },
-        { status: 400, headers },
+        { headers },
       );
     }
-
-    // 3. Buscar primer número disponible
-    const availableNumber = await db.twilioNumber.findFirst({
-      where: {
-        status: "AVAILABLE",
-        shop_id: null,
-      },
-      orderBy: { created_at: "asc" },
-    });
-
-    if (!availableNumber) {
-      console.log("❌ No hay números disponibles");
-      return json(
-        {
-          success: false,
-          error: "No hay números WhatsApp disponibles en este momento",
-          message: "Contacta a soporte técnico para obtener un número",
-        },
-        { status: 503, headers },
-      );
-    }
-
-    console.log(
-      `✅ Número disponible encontrado: ${availableNumber.phone_number}`,
-    );
-
-    // 4. Asignar número en transacción
-    const [assignedNumber, whatsappConfig] = await db.$transaction(
-      async (tx) => {
-        // Asignar número
-        const assigned = await tx.twilioNumber.update({
-          where: { id: availableNumber.id },
-          data: {
-            shop_id: shop.id,
-            status: "ASSIGNED",
-            assigned_at: new Date(),
-          },
-        });
-
-        // Crear configuración WhatsApp por defecto
-        const config = await tx.whatsAppConfiguration.create({
-          data: {
-            shop_id: shop.id,
-            enabled: true,
-            welcome_message: `¡Hola! Gracias por contactar ${shop_domain.replace(".myshopify.com", "")}. ¿En qué puedo ayudarte? 🛍️`,
-            business_hours: {
-              open: "09:00",
-              close: "18:00",
-              timezone: "America/Lima",
-            },
-            auto_responses: {
-              out_of_hours:
-                "Estamos fuera del horario de atención. Te responderemos en horario comercial (9 AM - 6 PM).",
-              escalation_keywords: ["humano", "persona", "agente", "soporte"],
-            },
-          },
-        });
-
-        return [assigned, config];
-      },
-    );
-
-    console.log(
-      `✅ Número ${assignedNumber.phone_number} asignado exitosamente a ${shop_domain}`,
-    );
 
     return json(
-      {
-        success: true,
-        message: `Número ${assignedNumber.phone_number} asignado exitosamente`,
-        data: {
-          phoneNumber: assignedNumber.phone_number,
-          twilioSid: assignedNumber.twilio_sid,
-          assignedAt: assignedNumber.assigned_at,
-          shop_domain: shop.shop_domain,
-          welcomeMessage: whatsappConfig.welcome_message,
-          businessHours: whatsappConfig.business_hours,
-        },
-      },
-      { headers },
+      { error: "Acción no válida o parámetros faltantes" },
+      { status: 400, headers }
     );
+
   } catch (error) {
-    console.error("❌ Error asignando número:", error);
+    console.error("❌ Error configurando WhatsApp:", error);
     return json(
       {
         success: false,
@@ -229,6 +220,112 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 };
+
+// 🔧 Función para validar credenciales de Meta Business
+async function validateMetaCredentials({
+  accessToken,
+  phoneNumberId,
+}: {
+  accessToken: string;
+  phoneNumberId: string;
+}) {
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v18.0/${phoneNumberId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      return {
+        success: false,
+        error: error.error?.message || "Token inválido",
+      };
+    }
+
+    const data = await response.json();
+    
+    if (data.status !== 'CONNECTED') {
+      return {
+        success: false,
+        error: `Número no conectado. Estado: ${data.status}`,
+      };
+    }
+
+    return {
+      success: true,
+      phoneNumber: data.display_phone_number,
+      verifiedName: data.verified_name,
+      status: data.status,
+    };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: "Error de conexión con Meta Business API" 
+    };
+  }
+}
+
+// 🔧 Función para configurar webhook en Meta
+async function setupMetaWebhook({
+  accessToken,
+  phoneNumberId,
+  webhookToken,
+}: {
+  accessToken: string;
+  phoneNumberId: string;
+  webhookToken: string;
+}) {
+  try {
+    const webhookUrl = `${process.env.APP_URL}/api/whatsapp/webhook`;
+
+    const response = await fetch(
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/webhooks`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          webhook_url: webhookUrl,
+          events: ["messages"],
+          verify_token: webhookToken,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error("❌ Error configurando webhook:", error);
+    } else {
+      console.log("✅ Webhook configurado correctamente");
+    }
+  } catch (error) {
+    console.error("❌ Error configurando webhook:", error);
+  }
+}
+
+// 🔧 Función para generar token webhook
+function generateWebhookToken() {
+  return `webhook_${Math.random().toString(36).substring(2, 15)}_${Date.now()}`;
+}
+
+// 🔧 Prompt por defecto
+function getDefaultPrompt() {
+  return `Eres un asistente virtual de atención al cliente para una tienda en línea. 
+Características:
+- Responde de manera amigable y profesional
+- Usa emojis ocasionalmente 
+- Ayuda con consultas sobre productos, precios y pedidos
+- Si no sabes algo, deriva a atención humana
+- Responde en español peruano
+- Mantén las respuestas concisas pero útiles`;
+}
 
 // 🔧 OPTIONS: Para CORS
 export const options = async () => {

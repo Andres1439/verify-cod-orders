@@ -1,13 +1,13 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "41005ee4ea0dade72d57a6c0fd641b45"
-name = "Verify COD Orders" 
+name = "Verify COD Orders"
 handle = "verify-cod-orders-4"
-application_url = "https://rabbit-demand-fragrance-eau.trycloudflare.com"
+application_url = "https://forums-winning-martha-lb.trycloudflare.com"
 embedded = true
 
 [build]
-automatically_update_urls_on_dev = false
+automatically_update_urls_on_dev = true
 include_config_on_deploy = true
 
 [webhooks]
@@ -30,7 +30,7 @@ api_version = "2025-04"
 scopes = "read_customers,read_inventory,read_orders,read_products,write_customers,write_orders"
 
 [auth]
-redirect_urls = ["https://rabbit-demand-fragrance-eau.trycloudflare.com/auth/callback", "https://rabbit-demand-fragrance-eau.trycloudflare.com/auth/shopify/callback", "https://rabbit-demand-fragrance-eau.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://forums-winning-martha-lb.trycloudflare.com/auth/callback", "https://forums-winning-martha-lb.trycloudflare.com/auth/shopify/callback", "https://forums-winning-martha-lb.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false
