@@ -26,6 +26,7 @@ import {
   XCircleIcon,
   CheckIcon,
 } from "@shopify/polaris-icons";
+import { encryptToken, decryptToken } from "../utils/encryption.server";
 
 // ===========================================================================
 // LOADER DEFINITIVO CON TIPOS DE TYPESCRIPT
@@ -33,6 +34,9 @@ import {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const { shop, accessToken } = session;
+
+  // Cifrar el accessToken antes de guardar
+  const encryptedToken = encryptToken(accessToken ?? "");
 
   let shopData = await db.shop.findUnique({
     where: { shop_domain: shop },
@@ -42,18 +46,62 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     shopData = await db.shop.create({
       data: {
         shop_domain: shop,
-        access_token: accessToken,
+        access_token: JSON.stringify(encryptedToken),
         chatbot_configuration: { create: {} },
       },
     });
   }
 
-  return json({ shop: shopData });
+  // Descifrar el accessToken antes de devolverlo (si es necesario)
+  let decryptedAccessToken = accessToken ?? "";
+  try {
+    if (typeof shopData.access_token === "string") {
+      const parsed = JSON.parse(shopData.access_token);
+      if (parsed.encrypted && parsed.iv && parsed.tag) {
+        decryptedAccessToken = decryptToken(parsed);
+      }
+    }
+  } catch (e) {}
+
+  return json({ shop: { ...shopData, access_token: decryptedAccessToken } });
 };
 
 // ===========================================================================
 // TU COMPONENTE FINAL CON TIPOS DE TYPESCRIPT
 // ===========================================================================
+function FooterLegal() {
+  return (
+    <div style={{
+      margin: '2rem auto 0 auto',
+      padding: '0.7rem 0.3rem',
+      background: '#f6f6f7',
+      borderRadius: '12px',
+      color: '#6d7175',
+      textAlign: 'center',
+      fontSize: '0.82rem',
+      maxWidth: 600,
+      border: '1px solid #e1e3e5',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+    }}>
+      <div style={{ marginBottom: 1 }}>
+        © {new Date().getFullYear()} Verify COD Orders
+      </div>
+      <div style={{ marginBottom: 1 }}>
+        <a href="https://andres1439.github.io/verify-cod-orders-legal/privacy_policy.html" target="_blank" rel="noopener noreferrer" style={{ color: '#0077c2', textDecoration: 'underline', margin: '0 0.25rem' }}>
+          Política de Privacidad
+        </a>
+        {" | "}
+        <a href="https://andres1439.github.io/verify-cod-orders-legal/terms_of_service.html" target="_blank" rel="noopener noreferrer" style={{ color: '#0077c2', textDecoration: 'underline', margin: '0 0.25rem' }}>
+          Términos de Servicio
+        </a>
+      </div>
+      <div>
+        Soporte: <a href="mailto:victor.minas@unmsm.edu.pe" style={{ color: '#0077c2', textDecoration: 'underline' }}>victor.minas@unmsm.edu.pe</a>
+      </div>
+    </div>
+  );
+}
+
 export default function IndexPage() {
   useLoaderData<typeof loader>();
 
@@ -425,6 +473,7 @@ export default function IndexPage() {
             </BlockStack>
           </Card>
         </BlockStack>
+        <FooterLegal />
       </Page>
     </div>
   );

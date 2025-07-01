@@ -2,6 +2,8 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
+import { encryptToken, decryptToken } from "../utils/encryption.server";
+import { TokenValidator } from "../utils/token-validator.server";
 
 // 🔍 GET: Para N8N - Obtener info de la tienda por Phone Number ID de Meta
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -131,12 +133,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         return json({ error: "Tienda no encontrada" }, { status: 404, headers });
       }
 
-      // 2. Validar credenciales de Meta Business
+      // 2. Validar formato del token antes de cualquier otra validación
+      const tokenValidation = TokenValidator.validateMetaAccessToken(metaConfig.accessToken);
+      if (!tokenValidation.valid) {
+        return json({ error: `Token inválido: ${tokenValidation.reason}` }, { status: 400, headers });
+      }
+      // 3. Validar credenciales de Meta Business
       const validation = await validateMetaCredentials({
         accessToken: metaConfig.accessToken,
         phoneNumberId: metaConfig.phoneNumberId,
       });
-
       if (!validation.success) {
         return json(
           { 
@@ -147,11 +153,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         );
       }
 
-      // 3. Guardar/actualizar configuración
+      // 4. Guardar/actualizar configuración
+      const encryptedToken = encryptToken(metaConfig.accessToken);
       const whatsappConfig = await db.whatsappBusinessConfig.upsert({
         where: { shop_id: shop.id },
         update: {
-          accessToken: metaConfig.accessToken,
+          accessToken: JSON.stringify(encryptedToken),
           phoneNumberId: metaConfig.phoneNumberId,
           businessAccountId: metaConfig.businessAccountId,
           webhookToken: metaConfig.webhookToken || generateWebhookToken(),
@@ -164,7 +171,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         },
         create: {
           shop_id: shop.id,
-          accessToken: metaConfig.accessToken,
+          accessToken: JSON.stringify(encryptedToken),
           phoneNumberId: metaConfig.phoneNumberId,
           businessAccountId: metaConfig.businessAccountId,
           webhookToken: metaConfig.webhookToken || generateWebhookToken(),
@@ -178,9 +185,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         },
       });
 
-      // 4. Configurar webhook en Meta automáticamente
+      // 5. Configurar webhook en Meta automáticamente
+      const decryptedToken = decryptToken(encryptedToken);
       await setupMetaWebhook({
-        accessToken: metaConfig.accessToken,
+        accessToken: decryptedToken,
         phoneNumberId: metaConfig.phoneNumberId,
         webhookToken: whatsappConfig.webhookToken as string,
       });
@@ -229,12 +237,19 @@ async function validateMetaCredentials({
   accessToken: string;
   phoneNumberId: string;
 }) {
+  let decryptedToken = accessToken;
+  try {
+    const parsed = JSON.parse(accessToken);
+    if (parsed.encrypted && parsed.iv && parsed.tag) {
+      decryptedToken = decryptToken(parsed);
+    }
+  } catch (e) {}
   try {
     const response = await fetch(
       `https://graph.facebook.com/v18.0/${phoneNumberId}`,
       {
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${decryptedToken}`,
         },
       },
     );

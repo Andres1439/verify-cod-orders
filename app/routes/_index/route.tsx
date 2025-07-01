@@ -16,6 +16,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return { showForm: Boolean(login) };
 };
 
+function FooterLegal() {
+  return (
+    <footer
+      className={styles.footerLegal}
+    >
+      <div>
+        © {new Date().getFullYear()} Verify COD Orders
+      </div>
+      <div>
+        <a href="https://andres1439.github.io/verify-cod-orders-legal/privacy_policy.html" target="_blank" rel="noopener noreferrer">
+          Política de Privacidad
+        </a>
+        {" | "}
+        <a href="https://andres1439.github.io/verify-cod-orders-legal/terms_of_service.html" target="_blank" rel="noopener noreferrer">
+          Términos de Servicio
+        </a>
+      </div>
+      <div>
+        Soporte: <a href="mailto:soporte@verify-cod.com">soporte@verify-cod.com</a>
+      </div>
+    </footer>
+  );
+}
+
 export default function App() {
   const { showForm } = useLoaderData<typeof loader>();
 
@@ -103,6 +127,7 @@ export default function App() {
           </ul>
         </div>
       </div>
+      <FooterLegal />
     </div>
   );
 }

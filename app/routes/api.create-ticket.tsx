@@ -2,6 +2,7 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
+import { SecurityAudit } from "../utils/security-audit.server";
 
 // Esta función 'action' se ejecuta cuando recibe una petición POST
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -28,16 +29,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       message,
     } = body;
 
-    // Validación de parámetros requeridos - acepta shopId O shopDomain
+    // Validación estricta y sanitización
     if ((!shopId && !shopDomain) || !customerEmail || !subject || !message) {
-      console.log("❌ [API] Faltan parámetros:", {
-        shopId: !!shopId,
-        shopDomain: !!shopDomain,
-        customerEmail: !!customerEmail,
-        customerName: !!customerName,
-        customerPhone: !!customerPhone,
-        subject: !!subject,
-        message: !!message,
+      if (process.env.NODE_ENV !== 'production') {
+        console.log("❌ [API] Faltan parámetros:", {
+          shopId: !!shopId,
+          shopDomain: !!shopDomain,
+          customerEmail: !!customerEmail,
+          customerName: !!customerName,
+          customerPhone: !!customerPhone,
+          subject: !!subject,
+          message: !!message,
+        });
+      }
+      SecurityAudit.log({
+        shopId: shopId || shopDomain || "unknown",
+        action: 'CREATE_TICKET_MISSING_PARAMS',
+        success: false,
+        details: { customerEmail, subject }
       });
       return json(
         {
@@ -52,7 +61,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Validar formato básico del email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(customerEmail)) {
-      console.log("❌ [API] Email inválido:", customerEmail);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log("❌ [API] Email inválido:", customerEmail);
+      }
+      SecurityAudit.log({
+        shopId: shopId || shopDomain || "unknown",
+        action: 'CREATE_TICKET_INVALID_EMAIL',
+        success: false,
+        details: { customerEmail }
+      });
       return json(
         {
           success: false,
@@ -69,7 +86,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
 
     if (!shop) {
-      console.log("❌ [API] Tienda no encontrada:", shopId || shopDomain);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log("❌ [API] Tienda no encontrada:", shopId || shopDomain);
+      }
+      SecurityAudit.log({
+        shopId: shopId || shopDomain || "unknown",
+        action: 'CREATE_TICKET_SHOP_NOT_FOUND',
+        success: false,
+        details: { customerEmail }
+      });
       return json(
         {
           success: false,
@@ -117,6 +142,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     console.log(
       `✅ [API] Ticket creado: ${newTicket.id} para la tienda ${shop.shop_domain}`,
     );
+
+    SecurityAudit.log({
+      shopId: shop.id,
+      action: 'CREATE_TICKET_SUCCESS',
+      success: true,
+      details: { customerEmail, ticketId: newTicket.id }
+    });
 
     // Respuesta exitosa con información del ticket
     return json(

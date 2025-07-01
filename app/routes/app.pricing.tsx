@@ -183,26 +183,6 @@ export default function Pricing() {
                     </Card>
                   </Layout.Section>
                 </Layout>
-
-                <div style={{ textAlign: "center", marginTop: "2rem" }}>
-                  <Card>
-                    <BlockStack gap="300">
-                      <Text as="h3" variant="headingMd">
-                        ¿No estás seguro qué plan elegir?
-                      </Text>
-                      <Text as="p" variant="bodyMd">
-                        Comienza con nuestro plan gratuito y actualiza cuando tu
-                        negocio crezca. Puedes cambiar de plan en cualquier
-                        momento.
-                      </Text>
-                      <div style={{ marginTop: "1rem" }}>
-                        <Button variant="plain">
-                          Contáctanos para una demostración personalizada
-                        </Button>
-                      </div>
-                    </BlockStack>
-                  </Card>
-                </div>
               </BlockStack>
             </Card>
           </Layout.Section>

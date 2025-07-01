@@ -2,6 +2,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
+import { decryptToken } from "../utils/encryption.server";
 
 // Tipos TypeScript para mayor seguridad
 interface ProductVariant {
@@ -117,6 +118,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   headers.append("Access-Control-Allow-Origin", "*");
   headers.append("Content-Type", "application/json");
 
+  // Control de acceso básico: solo permitir peticiones desde dominios permitidos
+  const allowedOrigins = ["https://tudominio.com", "http://localhost:3000"];
+  const origin = request.headers.get("origin");
+  if (origin && !allowedOrigins.includes(origin)) {
+    return json({ error: "Origen no permitido" }, { status: 403, headers });
+  }
+
   try {
     // Extraer parámetros de la URL
     const url = new URL(request.url);
@@ -154,6 +162,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       );
     }
 
+    // Descifrar el accessToken si está cifrado
+    let accessToken = shop.access_token;
+    try {
+      const parsed = JSON.parse(shop.access_token);
+      if (parsed.encrypted && parsed.iv && parsed.tag) {
+        accessToken = decryptToken(parsed);
+      }
+    } catch (e) {}
+
+    // Filtrar logs para no exponer accessToken ni datos sensibles
     console.log(`[API Products] Tienda encontrada: ${shop.shop_domain}`);
 
     // Query GraphQL con featuredMedia actualizado
@@ -233,7 +251,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Shopify-Access-Token": shop.access_token,
+        "X-Shopify-Access-Token": accessToken,
       },
       body: JSON.stringify({
         query: graphqlQuery,

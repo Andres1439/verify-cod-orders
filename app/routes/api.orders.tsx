@@ -4,6 +4,8 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
 import { logger } from "../utils/logger.server";
+import { decryptToken } from "../utils/encryption.server";
+import { RateLimiter } from "../utils/rate-limiter.server";
 
 // ✅ TIPOS PARA TYPESCRIPT Y PRISMA JSON
 interface ShopifyCustomerData {
@@ -464,9 +466,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // ✅ 1. CREAR ORDEN DIRECTAMENTE EN SHOPIFY PRIMERO
     logger.info("Creando orden directamente en Shopify...");
 
+    // Descifrar el accessToken si está cifrado
+    let realAccessToken = shop.access_token;
+    try {
+      const parsed = JSON.parse(shop.access_token);
+      if (parsed.encrypted && parsed.iv && parsed.tag) {
+        realAccessToken = decryptToken(parsed);
+      }
+    } catch (e) {}
+
+    // Mejorar el rate limiting
+    const rateLimitResult = await RateLimiter.checkLimit(
+      shopDomain,
+      100, // Límite por minuto
+      60000,
+      300000
+    );
+    if (!rateLimitResult.allowed) {
+      return json({ error: "Demasiadas peticiones. Inténtalo más tarde." }, { status: 429 });
+    }
+
     const shopifyResult = await createShopifyOrder({
       shopDomain: shop.shop_domain,
-      accessToken: shop.access_token,
+      accessToken: realAccessToken,
       customerData,
       shippingAddress,
       lineItems: [
