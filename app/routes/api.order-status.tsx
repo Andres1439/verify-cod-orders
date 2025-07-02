@@ -18,8 +18,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     console.log("[API Order Status] Consulta recibida:", {
       shopDomain,
       orderNumber,
-      customerName: customerName ? "***" : null, // Privacy log
-      customerEmail: customerEmail ? "***" : null, // Privacy log
+      customerName: customerName ? "***" : null,
+      customerEmail: customerEmail ? "***" : null,
     });
 
     if (!shopDomain || !orderNumber || !customerName || !customerEmail) {

@@ -94,6 +94,10 @@ function FooterLegal() {
         <a href="https://andres1439.github.io/verify-cod-orders-legal/terms_of_service.html" target="_blank" rel="noopener noreferrer" style={{ color: '#0077c2', textDecoration: 'underline', margin: '0 0.25rem' }}>
           Términos de Servicio
         </a>
+        {" | "}
+        <a href="https://andres1439.github.io/verify-cod-orders-legal/faq.html" target="_blank" rel="noopener noreferrer" style={{ color: '#0077c2', textDecoration: 'underline', margin: '0 0.25rem' }}>
+          Preguntas Frecuentes (FAQ)
+        </a>
       </div>
       <div>
         Soporte: <a href="mailto:victor.minas@unmsm.edu.pe" style={{ color: '#0077c2', textDecoration: 'underline' }}>victor.minas@unmsm.edu.pe</a>
