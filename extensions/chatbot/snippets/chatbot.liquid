@@ -10,9 +10,8 @@
   import { createChat } from "https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js";
 
   async function fetchChatbotConfiguration(shopDomain) {
-    // ✅ URLs desde variables de entorno
     const apiUrls = [
-      `${window.CHATBOT_API_BASE_URL || 'https://changelog-drink-furnished-job.trycloudflare.com'}/api/chatbot-config?shop=${shopDomain}`,
+      `https://travels-planned-tigers-juice.trycloudflare.com/api/chatbot-config?shop=${shopDomain}`,
     ];
     
     for (const apiUrl of apiUrls) {

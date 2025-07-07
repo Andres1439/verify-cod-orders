@@ -1,4 +1,4 @@
-// app/routes/app.chatbot.tsx (ACTUALIZADO CON MODAL)
+// app/routes/app.chatbot.tsx (ACTUALIZADO CON PERSONALIZACIÓN)
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { useState, useEffect } from "react";
 import { TitleBar } from "@shopify/app-bridge-react";
@@ -20,6 +20,7 @@ import {
   InlineStack,
   Modal,
   Badge,
+  Checkbox,
 } from "@shopify/polaris";
 import {
   SearchIcon,
@@ -27,6 +28,8 @@ import {
   InfoIcon,
   ChatIcon,
   ViewIcon,
+  PersonIcon,
+  SettingsIcon,
 } from "@shopify/polaris-icons";
 import { json } from "@remix-run/node";
 import {
@@ -48,7 +51,7 @@ export const loader = async ({ request }: { request: Request }) => {
 
   // Parámetros de paginación
   const page = parseInt(url.searchParams.get("page") || "1");
-  const limit = 15; // Máximo 15 tickets por página
+  const limit = 15;
   const skip = (page - 1) * limit;
 
   // Primero obtener la tienda
@@ -63,6 +66,16 @@ export const loader = async ({ request }: { request: Request }) => {
       chatbotConfig: {
         bot_name: "",
         welcome_message: "",
+        personality: "",
+        required_fields: {
+          nombre: true,
+          numero: false,
+          correo: true,
+          direccion: false,
+          ciudad: false,
+          provincia: false,
+          pais: false,
+        },
         is_active: true,
       },
       tickets: [],
@@ -77,14 +90,35 @@ export const loader = async ({ request }: { request: Request }) => {
   }
 
   // Obtener la configuración del chatbot
-  const chatbotConfig = (await db.chatbotConfiguration.findFirst({
+  const chatbotConfigRaw = await db.chatbotConfiguration.findFirst({
     where: {
       shop_id: shop.id,
     },
-  })) || {
-    bot_name: "",
-    welcome_message: "",
-    is_active: true,
+  });
+
+  // Configuración por defecto con tipos seguros
+  const defaultRequiredFields = {
+    nombre: true,
+    numero: true, // ✅ SIEMPRE TRUE POR DEFECTO
+    correo: true,
+    direccion: false,
+    ciudad: false,
+    provincia: false,
+    pais: false,
+  };
+
+  const chatbotConfig = {
+    bot_name: chatbotConfigRaw?.bot_name || "",
+    welcome_message: chatbotConfigRaw?.welcome_message || "",
+    personality:
+      chatbotConfigRaw?.personality ||
+      "Chatbot amigable que usa emojis y responde de manera casual",
+    required_fields: chatbotConfigRaw?.required_fields
+      ? typeof chatbotConfigRaw.required_fields === "object"
+        ? (chatbotConfigRaw.required_fields as Record<string, boolean>)
+        : defaultRequiredFields
+      : defaultRequiredFields,
+    is_active: chatbotConfigRaw?.is_active ?? true,
   };
 
   // Obtener el total de tickets para paginación
@@ -172,11 +206,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (action === "updateChatbotConfig") {
     const botName = formData.get("botName") ?? "";
     const welcomeMessage = formData.get("welcomeMessage") ?? "";
+    const personality = formData.get("personality") ?? "";
     const isActive = formData.get("isActive") === "true";
+
+    // Obtener campos requeridos del FormData
+    const requiredFields = {
+      nombre: formData.get("required_nombre") === "true",
+      numero: formData.get("required_numero") === "true",
+      correo: formData.get("required_correo") === "true",
+      direccion: formData.get("required_direccion") === "true",
+      ciudad: formData.get("required_ciudad") === "true",
+      provincia: formData.get("required_provincia") === "true",
+      pais: formData.get("required_pais") === "true",
+    };
 
     logger.info("Guardando configuración del chatbot", {
       shopId: shop.id,
       botName,
+      personality,
+      requiredFields,
       isActive,
     });
 
@@ -190,6 +238,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           bot_name: typeof botName === "string" ? botName : "",
           welcome_message:
             typeof welcomeMessage === "string" ? welcomeMessage : "",
+          personality: typeof personality === "string" ? personality : "",
+          required_fields: requiredFields,
           is_active: isActive,
           updated_at: new Date(),
         },
@@ -198,13 +248,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           bot_name: typeof botName === "string" ? botName : "",
           welcome_message:
             typeof welcomeMessage === "string" ? welcomeMessage : "",
+          personality: typeof personality === "string" ? personality : "",
+          required_fields: requiredFields,
           is_active: isActive,
         },
       });
 
-      logger.info("Configuración guardada", { 
-        shopId: shop.id, 
-        configId: chatbotConfig.id 
+      logger.info("Configuración guardada", {
+        shopId: shop.id,
+        configId: chatbotConfig.id,
       });
 
       return json({
@@ -215,7 +267,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } catch (error) {
       logger.error("Error guardando configuración", {
         shopId: shop.id,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       });
 
       return json(
@@ -234,7 +286,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         await db.ticket.update({
           where: {
             id: ticketId,
-            shop_id: shop.id, // Verificar que el ticket pertenece a la tienda
+            shop_id: shop.id,
           },
           data: {
             status: newStatus as any,
@@ -260,12 +312,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 /*
- * Componente principal de la página del chatbot
+ * Tipos para el componente
  */
+type RequiredFields = {
+  nombre: boolean;
+  numero: boolean;
+  correo: boolean;
+  direccion: boolean;
+  ciudad: boolean;
+  provincia: boolean;
+  pais: boolean;
+};
+
 type LoaderData = {
   chatbotConfig: {
     bot_name: string;
     welcome_message: string;
+    personality: string;
+    required_fields: RequiredFields;
     is_active: boolean;
   };
   tickets: Array<{
@@ -289,8 +353,7 @@ type LoaderData = {
 
 export default function ChatbotPage() {
   // Obtener datos del loader
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { chatbotConfig, tickets, pagination } = useLoaderData<LoaderData>();
+  const { chatbotConfig, tickets } = useLoaderData<LoaderData>();
   const navigation = useNavigation();
   const submit = useSubmit();
   const actionData = useActionData<any>();
@@ -300,6 +363,16 @@ export default function ChatbotPage() {
   const [config, setConfig] = useState({
     bot_name: chatbotConfig.bot_name || "",
     welcome_message: chatbotConfig.welcome_message || "",
+    personality: chatbotConfig.personality || "",
+    required_fields: chatbotConfig.required_fields || {
+      nombre: true,
+      numero: true, // ✅ INTERNO - NO VISIBLE EN UI
+      correo: true,
+      direccion: false,
+      ciudad: false,
+      provincia: false,
+      pais: false,
+    },
     is_active: chatbotConfig.is_active ?? true,
   });
   const [searchQuery, setSearchQuery] = useState("");
@@ -321,7 +394,7 @@ export default function ChatbotPage() {
     },
   ];
 
-  // ✅ CORRECIÓN: Función de guardado simplificada
+  // Función de guardado actualizada
   const handleSaveConfig = () => {
     console.log("💾 Enviando configuración:", config);
 
@@ -329,16 +402,41 @@ export default function ChatbotPage() {
     formData.append("action", "updateChatbotConfig");
     formData.append("botName", config.bot_name);
     formData.append("welcomeMessage", config.welcome_message);
+    formData.append("personality", config.personality);
     formData.append("isActive", config.is_active.toString());
+
+    // Agregar campos requeridos
+    Object.entries(config.required_fields).forEach(([field, value]) => {
+      // Fuerza "numero" a true siempre
+      formData.append(
+        `required_${field}`,
+        field === "numero" ? "true" : value.toString()
+      );
+    });
 
     submit(formData, { method: "post" });
   };
 
-  // ✅ Actualizar el estado local cuando se recarga la página
+  // Actualizar el estado local cuando se recarga la página
   useEffect(() => {
     setConfig({
       bot_name: chatbotConfig.bot_name || "",
       welcome_message: chatbotConfig.welcome_message || "",
+      personality: chatbotConfig.personality || "",
+      required_fields: chatbotConfig.required_fields
+        ? {
+            ...chatbotConfig.required_fields,
+            numero: true, // ✅ ASEGURAR QUE NÚMERO SIEMPRE ESTÉ TRUE
+          }
+        : {
+            nombre: true,
+            numero: true, // ✅ SIEMPRE TRUE POR DEFECTO
+            correo: true,
+            direccion: false,
+            ciudad: false,
+            provincia: false,
+            pais: false,
+          },
       is_active: chatbotConfig.is_active ?? true,
     });
   }, [chatbotConfig]);
@@ -350,7 +448,22 @@ export default function ChatbotPage() {
     }));
   };
 
-  // ✅ Función para obtener badge de estado
+  // Función para manejar cambios en campos requeridos
+  const handleRequiredFieldChange = (
+    field: keyof RequiredFields,
+    checked: boolean,
+  ) => {
+    setConfig((prevConfig) => ({
+      ...prevConfig,
+      required_fields: {
+        ...prevConfig.required_fields,
+        [field]: checked,
+        numero: true, // Siempre true
+      },
+    }));
+  };
+
+  // Función para obtener badge de estado
   const getStatusBadge = (status: string) => {
     const statusConfig = {
       PENDING: { tone: "warning" as const, text: "Pendiente" },
@@ -367,7 +480,7 @@ export default function ChatbotPage() {
     return <Badge tone={config.tone}>{config.text}</Badge>;
   };
 
-  // ✅ Función para actualizar estado del ticket en el modal
+  // Función para actualizar estado del ticket en el modal
   const updateTicketStatus = (ticketId: string, newStatus: string) => {
     const formData = new FormData();
     formData.append("action", "updateTicketStatus");
@@ -376,27 +489,19 @@ export default function ChatbotPage() {
     submit(formData, { method: "post" });
   };
 
-  // ✅ Función para abrir modal con detalles
+  // Función para abrir modal con detalles
   const viewTicketDetails = (ticket: any) => {
     setSelectedTicket(ticket);
     setIsModalOpen(true);
   };
 
-  // ✅ Función para navegar entre páginas
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const goToPage = (page: number) => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("page", page.toString());
-    window.location.href = url.toString();
-  };
-
-  // ✅ Función para cerrar modal
+  // Función para cerrar modal
   const closeModal = () => {
     setIsModalOpen(false);
     setSelectedTicket(null);
   };
 
-  // ✅ Filtrar tickets solo para búsqueda (no afecta paginación)
+  // Filtrar tickets solo para búsqueda (no afecta paginación)
   const filteredTickets = tickets.filter(
     (ticket) =>
       ticket.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -405,10 +510,15 @@ export default function ChatbotPage() {
       ticket.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  // ✅ Estado de guardado basado en navigation
+  // Estado de guardado basado en navigation
   const isSaving =
     navigation.state === "submitting" &&
     navigation.formData?.get("action") === "updateChatbotConfig";
+
+  // Variable para validar campos (número siempre estará marcado)
+  const hasAtLeastOneField = Object.values(config.required_fields).some(
+    Boolean,
+  );
 
   return (
     <div style={{ marginBottom: "2rem" }}>
@@ -440,7 +550,7 @@ export default function ChatbotPage() {
                       </p>
                     </Banner>
 
-                    {/* ✅ Mensajes de resultado mejorados */}
+                    {/* Mensajes de resultado */}
                     {actionData?.success && (
                       <Banner tone="success">
                         <p>{actionData.message || "Operación exitosa"}</p>
@@ -453,40 +563,201 @@ export default function ChatbotPage() {
                       </Banner>
                     )}
 
+                    {/* 🎯 CONFIGURACIÓN EN DOS COLUMNAS */}
+                    <Layout>
+                      <Layout.Section variant="oneHalf">
+                        <Card>
+                          <BlockStack gap="400">
+                            <InlineStack gap="200" blockAlign="center">
+                              <Icon source={SettingsIcon} />
+                              <Text as="h3" variant="headingMd">
+                                Configuración Básica
+                              </Text>
+                            </InlineStack>
+
+                            <TextField
+                              label="Nombre del bot"
+                              value={config.bot_name}
+                              onChange={(value) =>
+                                setConfig((prev) => ({
+                                  ...prev,
+                                  bot_name: value,
+                                }))
+                              }
+                              autoComplete="off"
+                              helpText="Este nombre aparecerá en el título del chatbot"
+                            />
+
+                            <TextField
+                              label="Mensaje de bienvenida"
+                              value={config.welcome_message}
+                              onChange={(value) =>
+                                setConfig((prev) => ({
+                                  ...prev,
+                                  welcome_message: value,
+                                }))
+                              }
+                              multiline={4}
+                              autoComplete="off"
+                              helpText="Este será el primer mensaje que vean tus clientes"
+                            />
+                          </BlockStack>
+                        </Card>
+                      </Layout.Section>
+
+                      <Layout.Section variant="oneHalf">
+                        <Card>
+                          <BlockStack gap="400">
+                            <InlineStack gap="200" blockAlign="center">
+                              <Icon source={PersonIcon} />
+                              <Text as="h3" variant="headingMd">
+                                Personalización del Chatbot
+                              </Text>
+                            </InlineStack>
+
+                            <TextField
+                              label="Personalidad del chatbot"
+                              value={config.personality}
+                              onChange={(value) =>
+                                setConfig((prev) => ({
+                                  ...prev,
+                                  personality: value,
+                                }))
+                              }
+                              multiline={4}
+                              autoComplete="off"
+                              placeholder="Chatbot amigable que usa emojis, responde de manera casual y ayuda con consultas de productos..."
+                              helpText="Describe cómo quieres que se comporte tu chatbot con los clientes"
+                            />
+                          </BlockStack>
+                        </Card>
+                      </Layout.Section>
+                    </Layout>
+
+                    {/* 📋 CAMPOS REQUERIDOS */}
                     <Card>
                       <BlockStack gap="400">
-                        <TextField
-                          label="Nombre del bot"
-                          value={config.bot_name}
-                          onChange={(value) =>
-                            setConfig((prev) => ({ ...prev, bot_name: value }))
-                          }
-                          autoComplete="off"
-                          helpText="Este nombre aparecerá en el título del chatbot"
-                        />
-                        <TextField
-                          label="Mensaje de bienvenida"
-                          value={config.welcome_message}
-                          onChange={(value) =>
-                            setConfig((prev) => ({
-                              ...prev,
-                              welcome_message: value,
-                            }))
-                          }
-                          multiline={4}
-                          autoComplete="off"
-                          helpText="Este será el primer mensaje que vean tus clientes"
-                        />
-                        <Button
-                          variant="primary"
-                          loading={isSaving}
-                          onClick={handleSaveConfig}
+                        <Text as="h3" variant="headingMd">
+                          Información requerida del cliente
+                        </Text>
+                        <Text as="p" tone="subdued">
+                          Selecciona qué información debe solicitar el chatbot a
+                          los clientes
+                        </Text>
+
+                        {/* ⚠️ BANNER DE VALIDACIÓN */}
+                        {!hasAtLeastOneField && (
+                          <Banner tone="critical">
+                            <p>
+                              ⚠️ Debes seleccionar al menos un campo obligatorio
+                              para poder crear órdenes.
+                            </p>
+                          </Banner>
+                        )}
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              "repeat(auto-fit, minmax(200px, 1fr))",
+                            gap: "16px",
+                          }}
                         >
-                          Guardar configuración
-                        </Button>
+                          {Object.entries(config.required_fields)
+                            .filter(([field]) => field !== "numero") // Oculta el checkbox de número
+                            .map(([field, checked]) => {
+                              const fieldLabels: Record<string, string> = {
+                                nombre: "Nombre completo",
+                                numero: "Número de teléfono",
+                                correo: "Correo electrónico",
+                                direccion: "Dirección",
+                                ciudad: "Ciudad",
+                                provincia: "Provincia/Estado",
+                                pais: "País",
+                              };
+
+                              return (
+                                <Checkbox
+                                  key={field}
+                                  label={fieldLabels[field]}
+                                  checked={checked}
+                                  onChange={(value) =>
+                                    handleRequiredFieldChange(
+                                      field as keyof RequiredFields,
+                                      value,
+                                    )
+                                  }
+                                />
+                              );
+                            })}
+                        </div>
+
+                        {/* 📝 EXPLICACIÓN DEL FUNCIONAMIENTO */}
+                        <div
+                          style={{
+                            backgroundColor: "#f0f9ff",
+                            padding: "16px",
+                            borderRadius: "8px",
+                            border: "1px solid #bae6fd",
+                          }}
+                        >
+                          <BlockStack gap="200">
+                            <Text as="p" variant="bodyMd" fontWeight="medium">
+                              📋 ¿Cómo funciona?
+                            </Text>
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              • <strong>Solo campos seleccionados:</strong> El
+                              chatbot solicitará únicamente los campos marcados
+                              como obligatorios, además del número de teléfono
+                            </Text>
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              • <strong>Ejemplo:</strong> Si solo marcas
+                              "Nombre", el chatbot pedirá nombre y teléfono
+                            </Text>
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              • <strong>Flexibilidad:</strong> Puedes cambiar
+                              estos campos en cualquier momento
+                            </Text>
+                          </BlockStack>
+                        </div>
+
+                        <div
+                          style={{
+                            backgroundColor: "#f6f6f7",
+                            padding: "12px",
+                            borderRadius: "8px",
+                            marginTop: "16px",
+                          }}
+                        >
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            💡 Campos seleccionados:{" "}
+                            {
+                              Object.values(config.required_fields).filter(
+                                Boolean,
+                              ).length
+                            }{" "}
+                            de {Object.keys(config.required_fields).length}
+                          </Text>
+                        </div>
                       </BlockStack>
                     </Card>
 
+                    {/* 💾 BOTÓN DE GUARDAR */}
+                    <Card>
+                      <Button
+                        variant="primary"
+                        size="large"
+                        loading={isSaving}
+                        onClick={handleSaveConfig}
+                        fullWidth
+                      >
+                        {isSaving
+                          ? "Guardando configuración..."
+                          : "Guardar configuración"}
+                      </Button>
+                    </Card>
+
+                    {/* 🎫 TICKETS RECIENTES */}
                     <Card>
                       <BlockStack gap="400">
                         <InlineStack align="space-between" blockAlign="center">
@@ -619,7 +890,7 @@ export default function ChatbotPage() {
           </Layout>
         </Tabs>
 
-        {/* ✅ MODAL PARA VER DETALLES DEL TICKET */}
+        {/* MODAL PARA VER DETALLES DEL TICKET */}
         <Modal
           open={isModalOpen}
           onClose={closeModal}

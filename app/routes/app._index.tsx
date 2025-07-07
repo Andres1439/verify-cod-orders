@@ -69,43 +69,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 // ===========================================================================
 // TU COMPONENTE FINAL CON TIPOS DE TYPESCRIPT
 // ===========================================================================
-function FooterLegal() {
-  return (
-    <div style={{
-      margin: '2rem auto 0 auto',
-      padding: '0.7rem 0.3rem',
-      background: '#f6f6f7',
-      borderRadius: '12px',
-      color: '#6d7175',
-      textAlign: 'center',
-      fontSize: '0.82rem',
-      maxWidth: 600,
-      border: '1px solid #e1e3e5',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-    }}>
-      <div style={{ marginBottom: 1 }}>
-        © {new Date().getFullYear()} Verify COD Orders
-      </div>
-      <div style={{ marginBottom: 1 }}>
-        <a href="https://andres1439.github.io/verify-cod-orders-legal/privacy_policy.html" target="_blank" rel="noopener noreferrer" style={{ color: '#0077c2', textDecoration: 'underline', margin: '0 0.25rem' }}>
-          Política de Privacidad
-        </a>
-        {" | "}
-        <a href="https://andres1439.github.io/verify-cod-orders-legal/terms_of_service.html" target="_blank" rel="noopener noreferrer" style={{ color: '#0077c2', textDecoration: 'underline', margin: '0 0.25rem' }}>
-          Términos de Servicio
-        </a>
-        {" | "}
-        <a href="https://andres1439.github.io/verify-cod-orders-legal/faq.html" target="_blank" rel="noopener noreferrer" style={{ color: '#0077c2', textDecoration: 'underline', margin: '0 0.25rem' }}>
-          Preguntas Frecuentes (FAQ)
-        </a>
-      </div>
-      <div>
-        Soporte: <a href="mailto:victor.minas@unmsm.edu.pe" style={{ color: '#0077c2', textDecoration: 'underline' }}>victor.minas@unmsm.edu.pe</a>
-      </div>
-    </div>
-  );
-}
-
 export default function IndexPage() {
   useLoaderData<typeof loader>();
 
@@ -477,7 +440,6 @@ export default function IndexPage() {
             </BlockStack>
           </Card>
         </BlockStack>
-        <FooterLegal />
       </Page>
     </div>
   );

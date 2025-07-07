@@ -11,6 +11,7 @@ import { logger } from "../utils/logger.server";
 export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     // `authenticate.webhook` valida la petición y devuelve el tópico, tienda y payload
+    // Si la verificación HMAC falla, esto lanzará un error que será capturado
     const { topic, shop, payload, admin } = await authenticate.webhook(request);
 
     // Esta línea es útil para ver en tu consola cada webhook que llega
@@ -251,13 +252,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Responde siempre con un 200 OK para que Shopify sepa que recibiste el webhook.
     return new Response(null, { status: 200 });
   } catch (error) {
-    // Manejo de errores de parsing JSON y otros errores de autenticación
     logger.error("Error en webhook", {
       error: error instanceof Error ? error.message : "Unknown error",
       stack: error instanceof Error ? error.stack : undefined,
     });
-    
-    // Shopify requiere que siempre devolvamos 200 OK, incluso en errores
-    return new Response(null, { status: 200 });
+    // Devuelve 401 para cualquier error en la autenticación del webhook
+    return new Response(null, { status: 401 });
   }
 };

@@ -1,16 +1,17 @@
-// app/routes/api.products.tsx
+// app/routes/api.products.tsx - VERSIÓN FINAL SHOPIFY 2025-04
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
 import { decryptToken } from "../utils/encryption.server";
 
-// Tipos TypeScript para mayor seguridad
+// Tipos TypeScript basados en Shopify GraphQL 2025-04
 interface ProductVariant {
   id: string;
   title: string;
   price: string;
   availableForSale: boolean;
   inventoryQuantity: number;
+  sku?: string;
   selectedOptions: Array<{
     name: string;
     value: string;
@@ -68,8 +69,10 @@ interface ProductEdge {
 
 interface FormattedProduct {
   id: string;
-  legacyResourceId: string;
+  product_id: string;
+  variant_id: string;
   title: string;
+  product_name: string;
   handle: string;
   description: string;
   status: string;
@@ -78,17 +81,24 @@ interface FormattedProduct {
     url: string;
     altText?: string;
   } | null;
+  price: number;
   priceRange: {
     min: number;
     max: number;
     currency: string;
   };
+  inventory_quantity: number;
+  available: boolean;
+  hasStock: boolean;
+  variant_title: string;
+  sku?: string;
   variants: Array<{
     id: string;
     title: string;
     price: number;
     available: boolean;
     inventory_quantity: number;
+    sku?: string;
     options: Array<{
       name: string;
       value: string;
@@ -107,74 +117,89 @@ interface FormattedProduct {
   createdAt: string;
   updatedAt: string;
   cursor: string;
-  hasStock: boolean;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  console.log("--- [API Products] Petición recibida ---");
+  console.log("--- [API Products] Iniciando consulta ---");
 
-  // Headers CORS
+  // Headers CORS estándar
   const headers = new Headers();
   headers.append("Access-Control-Allow-Origin", "*");
+  headers.append("Access-Control-Allow-Methods", "GET, OPTIONS");
+  headers.append("Access-Control-Allow-Headers", "Content-Type, Authorization");
   headers.append("Content-Type", "application/json");
 
-  // Control de acceso básico: solo permitir peticiones desde dominios permitidos
-  const allowedOrigins = ["https://tudominio.com", "http://localhost:3000"];
-  const origin = request.headers.get("origin");
-  if (origin && !allowedOrigins.includes(origin)) {
-    return json({ error: "Origen no permitido" }, { status: 403, headers });
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 200, headers });
   }
 
   try {
-    // Extraer parámetros de la URL
+    // Extraer y validar parámetros
     const url = new URL(request.url);
     const shopDomain = url.searchParams.get("shop");
     const search = url.searchParams.get("search") || "";
-    const first = parseInt(url.searchParams.get("first") || "20");
+    const first = Math.min(
+      parseInt(url.searchParams.get("first") || "50"),
+      250,
+    );
     const sortKey = url.searchParams.get("sortKey") || "UPDATED_AT";
     const reverse = url.searchParams.get("reverse") === "true";
 
     console.log(`[API Products] Parámetros:`, {
       shopDomain,
-      search,
+      search: search || "búsqueda general",
       first,
       sortKey,
       reverse,
     });
 
-    // Validar shop domain
+    // Validación requerida
     if (!shopDomain) {
       return json(
-        { error: "El parámetro 'shop' es requerido." },
+        {
+          success: false,
+          error: "El parámetro 'shop' es requerido.",
+          code: "MISSING_SHOP_DOMAIN",
+        },
         { status: 400, headers },
       );
     }
 
-    // Buscar la tienda en la base de datos
+    // Buscar tienda en base de datos
     const shop = await db.shop.findUnique({
       where: { shop_domain: shopDomain },
+      select: {
+        id: true,
+        shop_domain: true,
+        access_token: true,
+      },
     });
 
-    if (!shop || !shop.access_token) {
+    if (!shop?.access_token) {
       return json(
-        { error: "Tienda no encontrada o no autorizada." },
+        {
+          success: false,
+          error: "Tienda no encontrada o no autorizada.",
+          code: "SHOP_NOT_FOUND",
+        },
         { status: 404, headers },
       );
     }
 
-    // Descifrar el accessToken si está cifrado
+    // Descifrar access token
     let accessToken = shop.access_token;
     try {
       const parsed = JSON.parse(shop.access_token);
       if (parsed.encrypted && parsed.iv && parsed.tag) {
         accessToken = decryptToken(parsed);
       }
-    } catch (e) {}
+    } catch (e) {
+      // Token no está cifrado, usar tal como viene
+    }
 
-    // Filtrar logs para no exponer accessToken ni datos sensibles
-    console.log(`[API Products] Tienda encontrada: ${shop.shop_domain}`);
+    console.log(`[API Products] Tienda autorizada: ${shop.shop_domain}`);
 
-    // Query GraphQL con featuredMedia actualizado
+    // Query GraphQL estándar Shopify 2025-04
     const graphqlQuery = `#graphql
       query getProducts($first: Int!, $query: String, $sortKey: ProductSortKeys, $reverse: Boolean) {
         products(first: $first, query: $query, sortKey: $sortKey, reverse: $reverse) {
@@ -205,7 +230,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                   currencyCode
                 }
               }
-              variants(first: 10) {
+              variants(first: 100) {
                 edges {
                   node {
                     id
@@ -213,6 +238,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                     price
                     availableForSale
                     inventoryQuantity
+                    sku
                     selectedOptions {
                       name
                       value
@@ -244,7 +270,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     `;
 
-    // Hacer petición a Shopify Admin API
+    // Construir query de búsqueda Shopify
+    let shopifyQuery: string | null = null;
+    if (search && search.trim() !== "") {
+      const searchTerm = search.trim().toLowerCase();
+
+      // Mapeo inteligente de términos de búsqueda
+      if (searchTerm.includes("pantalon")) {
+        shopifyQuery = `title:*pantalon*`;
+      } else if (searchTerm.includes("camiseta")) {
+        shopifyQuery = `title:*camiseta*`;
+      } else if (searchTerm.includes("zapato")) {
+        shopifyQuery = `title:*zapato*`;
+      } else if (searchTerm.includes("snowboard")) {
+        shopifyQuery = `title:*snowboard*`;
+      } else {
+        // Para otros términos, usar búsqueda directa
+        shopifyQuery = `title:*${searchTerm}*`;
+      }
+    }
+
+    console.log(
+      `[API Products] Query Shopify: ${shopifyQuery || "catálogo completo"}`,
+    );
+
+    // Petición a Shopify Admin API
     const adminApiUrl = `https://${shopDomain}/admin/api/2025-04/graphql.json`;
 
     const response = await fetch(adminApiUrl, {
@@ -256,10 +306,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       body: JSON.stringify({
         query: graphqlQuery,
         variables: {
-          first: Math.min(first, 250), // Shopify límite máximo
-          query: search || null,
-          sortKey: sortKey,
-          reverse: reverse,
+          first,
+          query: shopifyQuery,
+          sortKey,
+          reverse,
         },
       }),
     });
@@ -272,43 +322,71 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     const data = await response.json();
 
-    // Verificar errores de GraphQL
+    // Verificar errores GraphQL
     if (data.errors) {
-      console.error("GraphQL errors:", data.errors);
+      console.error("[API Products] GraphQL errors:", data.errors);
       return json(
         {
-          error: "Error al consultar productos",
+          success: false,
+          error: "Error al consultar productos en Shopify",
           details: data.errors,
-          extensions: data.extensions, // Incluir cost info si está disponible
+          code: "GRAPHQL_ERROR",
         },
         { status: 400, headers },
       );
     }
 
-    // Formatear respuesta para n8n/chatbot con tipado
-    const products: FormattedProduct[] = data.data.products.edges
-      .map((edge: ProductEdge): FormattedProduct => {
+    const rawProducts = data.data.products.edges;
+    console.log(
+      `[API Products] Productos encontrados en Shopify: ${rawProducts.length}`,
+    );
+
+    // Procesar y filtrar productos con stock
+    const productsWithStock: FormattedProduct[] = rawProducts
+      .map((edge: ProductEdge) => {
         const node = edge.node;
 
-        // Solo incluir productos con al menos una variant disponible
-        const availableVariants = node.variants.edges.filter(
-          (variantEdge) =>
-            variantEdge.node.availableForSale &&
-            variantEdge.node.inventoryQuantity > 0,
+        // Procesar todas las variantes
+        const allVariants = node.variants.edges.map((variantEdge) => {
+          const variant = variantEdge.node;
+          return {
+            id: variant.id,
+            title: variant.title,
+            price: parseFloat(variant.price),
+            available: variant.availableForSale,
+            inventory_quantity: variant.inventoryQuantity || 0,
+            sku: variant.sku,
+            options: variant.selectedOptions,
+          };
+        });
+
+        // Filtrar variantes disponibles con stock
+        const availableVariants = allVariants.filter(
+          (variant) => variant.available && variant.inventory_quantity > 0,
         );
+
+        // Solo procesar productos que tienen al menos una variante con stock
+        if (availableVariants.length === 0) {
+          return null;
+        }
+
+        // Usar la primera variante disponible como principal
+        const primaryVariant = availableVariants[0];
 
         return {
           // IDs
           id: node.id,
-          legacyResourceId: node.id.split("/").pop() || "unknown", // Manejo seguro con fallback
+          product_id: node.id,
+          variant_id: primaryVariant.id,
 
           // Información básica
           title: node.title,
+          product_name: node.title,
           handle: node.handle,
           description: node.description || "",
           status: node.status,
 
-          // Media (campo actualizado)
+          // Imagen destacada
           featuredImage: node.featuredMedia?.preview?.image
             ? {
                 id: node.featuredMedia.preview.image.id,
@@ -317,27 +395,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
               }
             : null,
 
-          // Pricing
+          // Precios
+          price: primaryVariant.price,
           priceRange: {
             min: parseFloat(node.priceRangeV2.minVariantPrice.amount),
             max: parseFloat(node.priceRangeV2.maxVariantPrice.amount),
             currency: node.priceRangeV2.minVariantPrice.currencyCode,
           },
 
-          // Variants (solo las disponibles)
-          variants: availableVariants.map((variantEdge) => {
-            const variant = variantEdge.node;
-            return {
-              id: variant.id,
-              title: variant.title,
-              price: parseFloat(variant.price),
-              available: variant.availableForSale,
-              inventory_quantity: variant.inventoryQuantity, // CRÍTICO para n8n
-              options: variant.selectedOptions,
-            };
-          }),
+          // Stock (campo crítico para N8N)
+          inventory_quantity: primaryVariant.inventory_quantity,
+          available: primaryVariant.available,
+          hasStock: true,
 
-          // Options del producto
+          // Información de variante principal
+          variant_title: primaryVariant.title,
+          sku: primaryVariant.sku,
+
+          // Todas las variantes disponibles
+          variants: availableVariants,
+
+          // Opciones del producto
           options: node.options,
 
           // Metadata
@@ -351,21 +429,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           createdAt: node.createdAt,
           updatedAt: node.updatedAt,
 
-          // Para paginación
+          // Paginación
           cursor: edge.cursor,
-
-          // Campo específico para el chatbot
-          hasStock: availableVariants.length > 0,
         };
       })
-      .filter((product: FormattedProduct) => product.hasStock); // Solo devolver productos con stock
+      .filter(
+        (product: FormattedProduct | null): product is FormattedProduct =>
+          product !== null,
+      );
 
     const result = {
       success: true,
-      products: products,
+      products: productsWithStock,
+      count: productsWithStock.length,
       pageInfo: data.data.products.pageInfo,
-      totalCount: products.length,
-      // Incluir información de cost si está disponible
+      metadata: {
+        search_term: search,
+        shopify_query: shopifyQuery,
+        total_found: rawProducts.length,
+        with_stock: productsWithStock.length,
+        api_version: "2025-04",
+        timestamp: new Date().toISOString(),
+      },
+      // Información de costo de GraphQL si está disponible
       ...(data.extensions?.cost && {
         queryInfo: {
           cost: data.extensions.cost.actualQueryCost,
@@ -375,27 +461,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     };
 
     console.log(
-      `[API Products] Devolviendo ${products.length} productos CON STOCK para ${shopDomain}`,
+      `[API Products] Respuesta: ${productsWithStock.length} productos con stock`,
     );
     return json(result, { headers });
   } catch (error) {
     console.error("[API Products] Error:", error);
     return json(
       {
-        error: "Error interno del servidor al obtener productos.",
-        message: error instanceof Error ? error.message : "Unknown error",
+        success: false,
+        error: "Error interno del servidor",
+        message: error instanceof Error ? error.message : "Error desconocido",
+        code: "INTERNAL_ERROR",
+        timestamp: new Date().toISOString(),
       },
       { status: 500, headers },
     );
   }
 };
 
-// Manejo de OPTIONS para CORS
+// Manejo de preflight CORS
 export async function OPTIONS() {
   const headers = new Headers();
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  headers.set("Access-Control-Max-Age", "86400"); // 24 horas
 
   return new Response(null, { status: 204, headers });
 }

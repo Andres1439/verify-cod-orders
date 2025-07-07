@@ -49,6 +49,14 @@ enum CallStatus {
   FAILED
 }
 
+// NUEVOS ENUMS PARA TWILIO
+enum TwilioNumberStatus {
+  AVAILABLE    // Número comprado pero no asignado
+  ASSIGNED     // Asignado a una tienda
+  SUSPENDED    // Temporalmente suspendido
+  CANCELLED    // Cancelado/liberado
+}
+
 // MODELS
 model Session {
   id            String    @id
@@ -82,10 +90,10 @@ model Shop {
   
   // Nuevas relaciones simplificadas
   order_confirmations   OrderConfirmation[]
-  telnyx_configuration  TelnyxConfiguration?
   
-  // NUEVAS RELACIONES WHATSAPP
-  whatsapp_configuration WhatsappBusinessConfig?
+  // NUEVAS RELACIONES WHATSAPP/TWILIO
+  whatsapp_configuration_2 WhatsAppConfiguration?
+  twilio_number          TwilioNumber?
 }
 
 model ChatbotConfiguration {
@@ -95,6 +103,13 @@ model ChatbotConfiguration {
   welcome_message String   @default("Hola! Estoy aquí para ayudarte.")
   webhook_url     String?
   is_active       Boolean  @default(true)
+
+  // 🆕 NUEVAS COLUMNAS PARA PERSONALIZACIÓN
+  personality     String?  @default("Chatbot amigable que usa emojis y responde de manera casual")
+
+  // 🆕 CAMPOS REQUERIDOS (JSON para flexibilidad)
+  required_fields Json?    @default("{\"nombre\": true, \"numero\": false, \"correo\": true, \"direccion\": false, \"ciudad\": false, \"provincia\": false, \"pais\": false}")
+
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
@@ -125,19 +140,6 @@ model Ticket {
   shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
 }
 
-// NUEVAS TABLAS SIMPLIFICADAS
-
-model TelnyxConfiguration {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  shop_id       String   @unique @db.Uuid
-  api_key       String   // Token de Telnyx
-  phone_number  String   // Número para llamadas
-  is_active     Boolean  @default(true)
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
-
-  shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
-}
 
 model OrderConfirmation {
   id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -170,7 +172,6 @@ model OrderConfirmation {
   updated_at            DateTime                @updatedAt
 
   shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
-  call ConfirmationCall?
 
   @@unique([internal_order_number, shop_id])
   @@index([status])
@@ -179,52 +180,62 @@ model OrderConfirmation {
 
 }
 
-model ConfirmationCall {
-  id                    String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  order_confirmation_id String     @unique @db.Uuid
-  
-  // Datos de la llamada
-  telnyx_call_id        String?    // ID en Telnyx
-  status                CallStatus @default(PENDING)
-  customer_response     String?    // "confirmed", "declined", "no_answer"
-  
-  // Tiempos básicos
-  initiated_at          DateTime?
-  completed_at          DateTime?
-  
-  created_at            DateTime   @default(now())
-  updated_at            DateTime   @updatedAt
+// NUEVAS TABLAS WHATSAPP/TWILIO
 
-  order_confirmation OrderConfirmation @relation(fields: [order_confirmation_id], references: [id], onDelete: Cascade)
-}
-
-// NUEVAS TABLAS WHATSAPP
-
-model WhatsappBusinessConfig {
-  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  shop_id           String   @unique @db.Uuid
+model WhatsAppConfiguration {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shop_id         String   @unique @db.Uuid
 
   // Configuración básica
-  enabled           Boolean  @default(true)
-  welcome_message   String   @default("¡Hola! ¿En qué puedo ayudarte?")
-  business_hours    Json?
-  auto_responses    Json?
+  enabled         Boolean  @default(true)
+  welcome_message String   @default("¡Hola! ¿En qué puedo ayudarte?")
 
-  // Credenciales de Meta Business
-  accessToken       String?  @db.Text
-  phoneNumberId     String?
-  businessAccountId String?
-  webhookToken      String?
-  businessName      String?
-  agentPrompt       String?  @db.Text
+  // Configuración opcional
+  business_hours  Json?    // {"open": "09:00", "close": "18:00"}
+  auto_responses  Json?    // Respuestas automáticas
 
-  // Estado de verificación
-  isVerified        Boolean  @default(false)
-  isActive          Boolean  @default(true)
-  lastVerified      DateTime?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+  // Relación
+  shop            Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+}
 
-  shop              Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+model TwilioNumber {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  // Datos del número en Twilio
+  phone_number    String            @unique // "+15551234567"
+  twilio_sid      String            @unique // Identificador único en Twilio
+  friendly_name   String?           // Nombre amigable en Twilio
+
+  // Configuración del webhook
+  webhook_url     String?           // URL del webhook de N8N
+
+  // Estado del número
+  status          TwilioNumberStatus @default(AVAILABLE)
+
+  // Asignación a tienda (nullable)
+  shop_id         String?           @unique @db.Uuid // Solo una tienda por número
+  assigned_at     DateTime?         // Cuándo se asignó
+
+  // Costos y facturación
+  monthly_cost    Decimal           @db.Decimal(8, 2) // Costo mensual en USD
+  purchased_at    DateTime          @default(now())
+  next_billing    DateTime?         // Próxima fecha de facturación
+
+  // Metadatos
+  country_code    String            @default("US") // País del número
+  number_type     String            @default("local") // "local", "toll-free", "mobile"
+  capabilities    Json?             // {"sms": true, "voice": true, "mms": true}
+
+  created_at      DateTime          @default(now())
+  updated_at      DateTime          @updatedAt
+
+  // Relación opcional con tienda
+  shop            Shop?             @relation(fields: [shop_id], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([shop_id])
+  @@index([phone_number])
 }

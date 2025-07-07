@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-// app/routes/api.orders.tsx - VERSIÓN CORREGIDA COMPLETA
+// app/routes/api.orders.tsx - VERSIÓN CON FIX PARA CACHÉ DE SHOPIFY
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
@@ -24,7 +24,7 @@ interface ShopifyShippingAddress {
   country: string;
   zip: string;
   phone: string;
-  [key: string]: any; // ✅ SIGNATURA DE ÍNDICE PARA PRISMA JSON
+  [key: string]: any;
 }
 
 interface ShopifyLineItem {
@@ -36,7 +36,6 @@ interface ShopifyLineItem {
   }>;
 }
 
-// ✅ TIPOS PARA BASE DE DATOS (COMPATIBLES CON PRISMA JSON)
 interface DBLineItem {
   title: string;
   price: string;
@@ -44,7 +43,7 @@ interface DBLineItem {
   variantId: string;
   requiresShipping: boolean;
   taxable: boolean;
-  [key: string]: any; // ✅ SIGNATURA DE ÍNDICE PARA PRISMA JSON
+  [key: string]: any;
 }
 
 interface ShopifyOrderResult {
@@ -79,6 +78,7 @@ interface CreateShopifyOrderParams {
   currency?: string;
   note?: string;
   itemPrice: number;
+  requestId: string; // ✅ NUEVO: ID único para evitar caché
 }
 
 interface CountryProvinceResult {
@@ -86,55 +86,170 @@ interface CountryProvinceResult {
   province: string;
 }
 
-// ✅ VALIDACIÓN DE ENTRADA PARA PRODUCCIÓN
-function validateOrderData(data: any) {
+// ✅ FUNCIÓN PARA GENERAR EMAIL TEMPORAL
+function generateTemporaryEmail(phone: string, shopDomain: string): string {
+  const cleanPhone = phone.replace(/[^0-9]/g, "");
+  const shopName = shopDomain.split(".")[0];
+  return `${cleanPhone}@temp.${shopName}.customer`;
+}
+
+// ✅ NUEVA FUNCIÓN PARA LIMPIAR CUALQUIER CAMPO DE TEXTO
+function cleanTextField(value: string): string {
+  // Si no hay valor, devolver vacío
+  if (!value || value.trim() === "") {
+    return "";
+  }
+
+  const cleanValue = value.trim().toLowerCase();
+
+  // ✅ LISTA COMPLETA DE FRASES QUE INDICAN "NO QUIERO DAR INFORMACIÓN"
+  const invalidPhrases = [
+    "no brindo información",
+    "no brindo informacion",
+    "nobrindoinformación",
+    "nobrindoinformacion",
+    "no doy información",
+    "no doy informacion",
+    "no proporciono",
+    "no tengo",
+    "no quiero",
+    "no deseo",
+    "prefiero no dar",
+    "prefiero no",
+    "no dar",
+    "sin información",
+    "sin informacion",
+    "ninguno",
+    "n/a",
+    "na",
+    "no",
+    "nada",
+    "no disponible",
+    "no aplica",
+    "no hay",
+    "sin datos",
+    "vacio",
+    "vacío",
+  ];
+
+  // Si contiene alguna frase inválida, devolver vacío
+  const hasInvalidPhrase = invalidPhrases.some((phrase) =>
+    cleanValue.includes(phrase),
+  );
+
+  if (hasInvalidPhrase) {
+    return ""; // ✅ DEVOLVER VACÍO EN LUGAR DEL TEXTO
+  }
+
+  // Si es válido, devolver el valor original (manteniendo mayúsculas)
+  return value.trim();
+}
+
+// ✅ FUNCIÓN PARA LIMPIAR EMAILS INVÁLIDOS
+function cleanInvalidEmail(
+  email: string,
+  phone: string,
+  shopDomain: string,
+): string {
+  // Si no hay email, generar uno temporal
+  if (!email || email.trim() === "") {
+    return generateTemporaryEmail(phone, shopDomain);
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  // ✅ DETECTAR FRASES QUE NO SON EMAILS VÁLIDOS
+  const invalidPhrases = [
+    "no brindo información",
+    "no brindo informacion",
+    "nobrindoinformación",
+    "nobrindoinformacion",
+    "no doy información",
+    "no doy informacion",
+    "no proporciono",
+    "no tengo",
+    "no quiero",
+    "no deseo",
+    "prefiero no dar",
+    "prefiero no",
+    "no dar",
+    "sin email",
+    "sin correo",
+    "no correo",
+    "no email",
+    "ninguno",
+    "n/a",
+    "na",
+    "no",
+    "nada",
+    "no disponible",
+    "no aplica",
+    "no tengo correo",
+    "no tengo email",
+    "sin información",
+    "sin informacion",
+  ];
+
+  // Si contiene alguna frase inválida, generar email válido
+  const hasInvalidPhrase = invalidPhrases.some((phrase) =>
+    cleanEmail.includes(phrase),
+  );
+
+  if (hasInvalidPhrase) {
+    const shopName = shopDomain.split(".")[0];
+    return `nobrinda@${shopName}.com`;
+  }
+
+  // ✅ VALIDACIÓN BÁSICA DE EMAIL (RFC 5322 compatible)
+  const emailRegex =
+    /^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/;
+
+  if (!emailRegex.test(cleanEmail)) {
+    const shopName = shopDomain.split(".")[0];
+    return `nobrinda@${shopName}.com`;
+  }
+
+  // Verificaciones adicionales
+  if (
+    !cleanEmail.includes("@") ||
+    !cleanEmail.includes(".") ||
+    cleanEmail.length < 5 ||
+    cleanEmail.length > 254 ||
+    cleanEmail.endsWith(".")
+  ) {
+    const shopName = shopDomain.split(".")[0];
+    return `nobrinda@${shopName}.com`;
+  }
+
+  // Si es válido, devolverlo limpio
+  return cleanEmail;
+}
+
+// ✅ FUNCIÓN PARA VALIDAR DATOS MÍNIMOS
+function validateMinimalOrderData(data: any) {
   const errors: string[] = [];
 
-  if (!data.customerData?.email || !data.customerData?.phone) {
-    errors.push("Email y teléfono del cliente son requeridos");
+  // SOLO el teléfono es obligatorio
+  if (!data.phone || data.phone.trim() === "") {
+    errors.push("Número de teléfono es requerido");
   }
 
-  if (!data.shippingAddress?.address1 || !data.shippingAddress?.city) {
-    errors.push("Dirección de envío incompleta");
+  if (!data.product_name || data.product_name.trim() === "") {
+    errors.push("Nombre del producto es requerido");
   }
 
-  if (!data.lineItems || data.lineItems.length === 0) {
-    errors.push("El pedido debe contener al menos un producto");
+  if (!data.variant_id || data.variant_id.trim() === "") {
+    errors.push("ID del producto es requerido");
   }
 
-  if (!data.itemPrice || data.itemPrice <= 0) {
+  if (!data.price || parseFloat(data.price) <= 0) {
     errors.push("Precio del producto debe ser mayor a 0");
   }
 
   return errors;
 }
 
-// ✅ RATE LIMITING BÁSICO (en producción usar Redis)
-const requestCounts = new Map<string, { count: number; resetTime: number }>();
-
-function checkRateLimit(
-  shopDomain: string,
-  limit = 100,
-  windowMs = 60000,
-): boolean {
-  const now = Date.now();
-  const key = shopDomain;
-  const record = requestCounts.get(key);
-
-  if (!record || now > record.resetTime) {
-    requestCounts.set(key, { count: 1, resetTime: now + windowMs });
-    return true;
-  }
-
-  if (record.count >= limit) {
-    return false;
-  }
-
-  record.count++;
-  return true;
-}
-
-// ✅ FUNCIÓN PARA OBTENER LA MONEDA DE LA TIENDA
+// ✅ FUNCIÓN PARA OBTENER LA MONEDA DE LA TIENDA (SIN CAMBIOS)
 async function getShopCurrency(
   shopDomain: string,
   accessToken: string,
@@ -142,7 +257,6 @@ async function getShopCurrency(
   try {
     logger.info("Obteniendo moneda de la tienda", { shopDomain });
 
-    // Usar GraphQL para obtener la moneda (más confiable)
     const query = `
       query {
         shop {
@@ -160,6 +274,7 @@ async function getShopCurrency(
         headers: {
           "Content-Type": "application/json",
           "X-Shopify-Access-Token": accessToken,
+          "X-Request-ID": `currency-${Date.now()}-${Math.random()}`, // ✅ EVITAR CACHÉ
         },
         body: JSON.stringify({ query }),
       },
@@ -194,13 +309,13 @@ async function getShopCurrency(
       error: error instanceof Error ? error.message : "Unknown error",
     });
 
-    // ✅ FALLBACK: usar REST API si GraphQL falla
     try {
       const restResponse = await fetch(
         `https://${shopDomain}/admin/api/2025-04/shop.json`,
         {
           headers: {
             "X-Shopify-Access-Token": accessToken,
+            "X-Request-ID": `currency-fallback-${Date.now()}`, // ✅ EVITAR CACHÉ
           },
         },
       );
@@ -224,12 +339,11 @@ async function getShopCurrency(
       });
     }
 
-    // Por defecto USD
     return "USD";
   }
 }
 
-// ✅ FUNCIÓN PRINCIPAL: USAR REST API (MÁS SIMPLE Y CONFIABLE)
+// ✅ FUNCIÓN PRINCIPAL MODIFICADA PARA EVITAR CACHÉ
 async function createShopifyOrder({
   shopDomain,
   accessToken,
@@ -239,17 +353,25 @@ async function createShopifyOrder({
   currency = "USD",
   note = "",
   itemPrice,
+  requestId, // ✅ NUEVO PARÁMETRO
 }: CreateShopifyOrderParams): Promise<ShopifyOrderResult> {
   try {
-    logger.info("Creando orden con REST API", { shopDomain });
+    logger.info("Creando orden con datos únicos", {
+      shopDomain,
+      requestId, // ✅ LOG DEL REQUEST ID
+      customerEmail: customerData.email,
+      productVariant: lineItems[0]?.variantId,
+      timestamp: Date.now(),
+    });
 
-    // ✅ OBTENER MONEDA DE LA TIENDA PRIMERO
     const shopCurrency = await getShopCurrency(shopDomain, accessToken);
 
-    // ✅ CREAR ORDEN CON REST API - MUCHO MÁS SIMPLE
+    // ✅ AGREGAR DATOS ÚNICOS PARA EVITAR CACHÉ
+    const uniqueNote = `${note} - Request: ${requestId} - Timestamp: ${Date.now()}`;
+
     const orderData = {
       order: {
-        note: `${note} | Moneda tienda: ${shopCurrency}`,
+        note: uniqueNote, // ✅ NOTA ÚNICA
         email: customerData.email,
         shipping_address: {
           first_name: shippingAddress.firstName,
@@ -264,13 +386,36 @@ async function createShopifyOrder({
         line_items: lineItems.map((item) => ({
           variant_id: item.variantId,
           quantity: item.quantity,
-          custom_attributes: item.customAttributes,
+          custom_attributes: [
+            ...item.customAttributes,
+            // ✅ AGREGAR ATRIBUTOS ÚNICOS
+            {
+              key: "request_id",
+              value: requestId,
+            },
+            {
+              key: "creation_timestamp",
+              value: Date.now().toString(),
+            },
+          ],
         })),
         currency: shopCurrency,
         financial_status: "pending",
         fulfillment_status: "unfulfilled",
+        tags: `chatbot,request-${requestId}`, // ✅ TAG ÚNICO
       },
     };
+
+    // ✅ LOG DETALLADO DE LOS DATOS ENVIADOS
+    logger.info("Datos enviados a Shopify:", {
+      requestId,
+      email: orderData.order.email,
+      variant_id: orderData.order.line_items[0]?.variant_id,
+      quantity: orderData.order.line_items[0]?.quantity,
+      note: orderData.order.note,
+      tags: orderData.order.tags,
+      address: orderData.order.shipping_address.address1,
+    });
 
     const response = await fetch(
       `https://${shopDomain}/admin/api/2025-04/orders.json`,
@@ -279,6 +424,8 @@ async function createShopifyOrder({
         headers: {
           "Content-Type": "application/json",
           "X-Shopify-Access-Token": accessToken,
+          "X-Request-ID": requestId, // ✅ HEADER ÚNICO
+          "Cache-Control": "no-cache", // ✅ EVITAR CACHÉ
         },
         body: JSON.stringify(orderData),
       },
@@ -286,16 +433,28 @@ async function createShopifyOrder({
 
     if (!response.ok) {
       const errorText = await response.text();
+      logger.error("Error en petición a Shopify:", {
+        requestId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
       throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
     const result = await response.json();
     const order = result.order;
 
-    logger.info("Orden creada exitosamente", {
+    logger.info("Orden creada exitosamente en Shopify:", {
+      requestId,
       shopDomain,
       orderName: order.name,
+      orderId: order.id,
       currency: order.currency,
+      phone: customerData.phone,
+      email: order.email,
+      lineItemsCount: order.line_items?.length,
+      firstVariantId: order.line_items?.[0]?.variant_id,
     });
 
     return {
@@ -321,6 +480,7 @@ async function createShopifyOrder({
     };
   } catch (error) {
     logger.error("Error creando orden en Shopify", {
+      requestId,
       shopDomain,
       error: error instanceof Error ? error.message : "Unknown error",
     });
@@ -346,110 +506,162 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     const body = await request.json();
 
+    // ✅ GENERAR ID ÚNICO PARA ESTA PETICIÓN
+    const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     const {
       shopDomain,
       first_name,
       last_name,
       email,
-      phone,
+      phone, // ✅ ÚNICO CAMPO OBLIGATORIO
       address1,
       city,
       zip,
       country,
       province,
-      product_name,
-      price,
+      product_name, // ✅ OBLIGATORIO (viene del chatbot)
+      price, // ✅ OBLIGATORIO (viene del chatbot)
       quantity,
-      variant_id,
+      variant_id, // ✅ OBLIGATORIO (viene del chatbot)
     } = body;
 
-    logger.info("Creando OrderConfirmation para:", shopDomain);
-    logger.info("Datos recibidos:", {
-      first_name,
-      last_name,
-      email,
-      phone,
-      address1,
-      city,
-      zip,
-      country,
-      province,
-      product_name,
-      price,
-      quantity,
-      variant_id,
+    logger.info("=== NUEVA PETICIÓN DE ORDEN ===", {
+      requestId, // ✅ LOG DEL REQUEST ID ÚNICO
+      shopDomain,
+      timestamp: Date.now(),
     });
 
-    // Validación básica
-    if (!shopDomain || !email || !product_name || !variant_id) {
+    logger.info("Datos recibidos:", {
+      requestId,
+      phone,
+      product_name,
+      price,
+      variant_id,
+      quantity,
+      has_name: !!first_name,
+      has_email: !!email,
+      has_address: !!address1,
+      original_email: email,
+    });
+
+    // ✅ VALIDACIÓN SOLO DE CAMPOS CRÍTICOS
+    const validationErrors = validateMinimalOrderData(body);
+    if (validationErrors.length > 0) {
       return json(
         {
-          error:
-            "Datos requeridos: shopDomain, email, product_name, variant_id",
+          error: validationErrors.join(", "),
           code: "MISSING_REQUIRED_FIELDS",
         },
         { status: 400, headers },
       );
     }
 
-    // ✅ BUSCAR TIENDA CON ACCESS_TOKEN
+    // ✅ BUSCAR TIENDA
     const shop = await db.shop.findUnique({
       where: { shop_domain: shopDomain },
       select: {
         id: true,
         shop_domain: true,
-        access_token: true, // ✅ NECESARIO PARA SHOPIFY API
+        access_token: true,
       },
     });
 
     if (!shop) {
-      logger.error("Tienda no encontrada");
+      logger.error("Tienda no encontrada", { requestId });
       return json({ error: "Tienda no encontrada" }, { status: 404, headers });
     }
 
     if (!shop.access_token) {
-      logger.error("Token de acceso no disponible para la tienda");
+      logger.error("Token de acceso no disponible para la tienda", {
+        requestId,
+      });
       return json(
         { error: "Token de acceso no disponible para la tienda" },
         { status: 400, headers },
       );
     }
 
-    logger.info("Tienda encontrada:", shop.id);
+    logger.info("Tienda encontrada:", { requestId, shopId: shop.id });
 
-    // Calcular total del pedido
+    // ✅ PREPARAR DATOS CON VALORES POR DEFECTO
     const itemPrice = parseFloat(price) || 0;
     const itemQuantity = parseInt(quantity) || 1;
     const orderTotal = itemPrice * itemQuantity;
 
-    // Generar número de orden interno único
+    // ✅ GENERAR NÚMERO DE ORDEN INTERNO ÚNICO CON REQUEST ID
     const timestamp = Date.now();
     const random = Math.floor(Math.random() * 1000)
       .toString()
       .padStart(3, "0");
-    const internalOrderNumber = `ORD-${timestamp}-${random}`;
+    const internalOrderNumber = `ORD-${timestamp}-${random}-${requestId.split("-")[2]}`;
 
-    // ✅ DETECTAR PAÍS Y PROVINCIA
+    // ✅ LIMPIAR TODOS LOS CAMPOS DE TEXTO
+    const finalFirstName = cleanTextField(first_name);
+    const finalLastName = cleanTextField(last_name);
+    const finalEmail = cleanInvalidEmail(email, phone, shopDomain);
+    const cleanAddress1 = cleanTextField(address1);
+    const cleanCity = cleanTextField(city);
+    const cleanZip = cleanTextField(zip);
+    const cleanCountry = cleanTextField(country);
+    const cleanProvince = cleanTextField(province);
+
+    // ✅ LOG PARA DEBUGGING CON REQUEST ID
+    logger.info("Campos procesados:", {
+      requestId,
+      original_first_name: first_name,
+      final_first_name: finalFirstName,
+      original_last_name: last_name,
+      final_last_name: finalLastName,
+      original_email: email,
+      final_email: finalEmail,
+      original_address1: address1,
+      clean_address1: cleanAddress1,
+      original_city: city,
+      clean_city: cleanCity,
+      original_variant_id: variant_id,
+      original_quantity: quantity,
+    });
+
+    // ✅ USAR VALORES LIMPIOS O FALLBACKS
+    const finalAddress =
+      cleanAddress1 !== ""
+        ? cleanAddress1
+        : "Dirección pendiente de confirmación";
+    const finalCity = cleanCity !== "" ? cleanCity : "Lima";
+    const finalZip = cleanZip !== "" ? cleanZip : "15001";
+    const finalCountry = cleanCountry !== "" ? cleanCountry : "";
+    const finalProvince = cleanProvince !== "" ? cleanProvince : "";
+
+    // ✅ DETECTAR PAÍS Y PROVINCIA (con valores limpios)
     const { country: detectedCountry, province: detectedProvince } =
-      detectCountryAndProvince(city, country, province);
+      detectCountryAndProvince(finalCity, finalCountry, finalProvince);
 
-    // ✅ PREPARAR DATOS PARA SHOPIFY
+    // ✅ CALCULAR SI TIENE DATOS COMPLETOS (ACTUALIZADO)
+    const hasCompleteData = !!(
+      finalFirstName !== "" && // ✅ Nombre limpio no vacío
+      cleanAddress1 !== "" && // ✅ Dirección limpia no vacía
+      !finalEmail.includes("nobrinda@") && // ✅ Email no fue generado
+      !finalEmail.includes("@temp.") // ✅ No es temporal
+    );
+
+    // ✅ PREPARAR DATOS PARA SHOPIFY CON VALORES LIMPIOS
     const customerData: ShopifyCustomerData = {
-      firstName: first_name || "Cliente",
-      lastName: last_name || "Chatbot",
-      email: email,
-      phone: phone || "",
+      firstName: finalFirstName || "Cliente",
+      lastName: finalLastName || "Chatbot",
+      email: finalEmail,
+      phone: phone,
     };
 
     const shippingAddress: ShopifyShippingAddress = {
-      firstName: first_name || "Cliente",
-      lastName: last_name || "Chatbot",
-      address1: address1 || "Dirección pendiente",
-      city: city || "Lima",
+      firstName: finalFirstName || "Cliente",
+      lastName: finalLastName || "Chatbot",
+      address1: finalAddress,
+      city: finalCity,
       province: detectedProvince,
       country: detectedCountry,
-      zip: zip || "15001",
-      phone: phone || "",
+      zip: finalZip,
+      phone: phone,
     };
 
     const lineItems: DBLineItem[] = [
@@ -463,10 +675,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       },
     ];
 
-    // ✅ 1. CREAR ORDEN DIRECTAMENTE EN SHOPIFY PRIMERO
-    logger.info("Creando orden directamente en Shopify...");
+    // ✅ CREAR ORDEN EN SHOPIFY CON REQUEST ID
+    logger.info("Iniciando creación de orden en Shopify...", { requestId });
 
-    // Descifrar el accessToken si está cifrado
     let realAccessToken = shop.access_token;
     try {
       const parsed = JSON.parse(shop.access_token);
@@ -475,16 +686,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
     } catch (e) {}
 
-    // Mejorar el rate limiting
+    // Rate limiting
     const rateLimitResult = await RateLimiter.checkLimit(
       shopDomain,
-      100, // Límite por minuto
+      100,
       60000,
-      300000
+      300000,
     );
     if (!rateLimitResult.allowed) {
-      return json({ error: "Demasiadas peticiones. Inténtalo más tarde." }, { status: 429 });
+      return json(
+        { error: "Demasiadas peticiones. Inténtalo más tarde." },
+        { status: 429 },
+      );
     }
+
+    // ✅ PEQUEÑO DELAY PARA EVITAR PROBLEMAS DE TIMING
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     const shopifyResult = await createShopifyOrder({
       shopDomain: shop.shop_domain,
@@ -504,17 +721,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               key: "internal_order_number",
               value: internalOrderNumber,
             },
+            {
+              key: "request_id", // ✅ AGREGAR REQUEST ID
+              value: requestId,
+            },
           ],
         },
       ],
       currency: "USD",
-      note: `Orden creada desde chatbot - ${internalOrderNumber}`,
+      note: `Orden creada desde chatbot con datos ${hasCompleteData ? "completos" : "mínimos"} - ${internalOrderNumber}${hasCompleteData ? "" : " - REQUIERE COMPLETAR DATOS DE ENVÍO"}`,
       itemPrice: itemPrice,
+      requestId: requestId, // ✅ PASAR REQUEST ID
     });
 
-    // ✅ SI FALLA SHOPIFY, NO CONTINUAR
+    // ✅ VERIFICAR ÉXITO DE SHOPIFY
     if (!shopifyResult.success || !shopifyResult.order) {
-      logger.error("Error al crear orden en Shopify:", shopifyResult.error);
+      logger.error("Error al crear orden en Shopify:", {
+        requestId,
+        error: shopifyResult.error,
+      });
       return json(
         {
           success: false,
@@ -525,73 +750,92 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    logger.info(
-      "Orden creada exitosamente en Shopify:",
-      shopifyResult.order.name,
-    );
+    logger.info("Orden creada exitosamente en Shopify:", {
+      requestId,
+      orderName: shopifyResult.order.name,
+      orderId: shopifyResult.order.id,
+    });
 
-    const shopifyOrderId = shopifyResult.order.id;
+    // ✅ CONVERTIR A STRING PARA PRISMA
+    const shopifyOrderId = String(shopifyResult.order.id);
     const shopifyOrderName = shopifyResult.order.name;
 
-    // ✅ 2. GUARDAR EN BASE DE DATOS LOCAL (SOLO SI SHOPIFY TUVO ÉXITO)
+    // ✅ GUARDAR EN BASE DE DATOS LOCAL
     const orderConfirmation = await db.orderConfirmation.create({
       data: {
         shop_id: shop.id,
         internal_order_number: internalOrderNumber,
-        shopify_order_id: shopifyOrderId, // ✅ ID de Shopify
-        shopify_order_name: shopifyOrderName, // ✅ Nombre de Shopify (#1001)
-        customer_phone: phone || "",
-        customer_name: `${first_name || "Cliente"} ${last_name || "Chatbot"}`,
-        customer_email: email,
-        order_items: lineItems as any, // ✅ CAST EXPLÍCITO PARA PRISMA JSON
+        shopify_order_id: shopifyOrderId,
+        shopify_order_name: shopifyOrderName,
+        customer_phone: phone,
+        customer_name:
+          `${finalFirstName || "Cliente"} ${finalLastName || "Chatbot"}`.trim(),
+        customer_email: finalEmail,
+        order_items: lineItems as any,
         order_total: orderTotal,
-        shipping_address: shippingAddress as any, // ✅ CAST EXPLÍCITO PARA PRISMA JSON
-        source: "CHATBOT_STORE", // ✅ USAR TU ENUM EXISTENTE
-        status: "PENDING_CALL", // ✅ USAR TU ENUM EXISTENTE - inicia como PENDING_CALL
+        shipping_address: shippingAddress as any,
+        source: "CHATBOT_STORE",
+        status: "PENDING_CALL",
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 días
       },
     });
 
-    logger.info("OrderConfirmation creada:", {
+    logger.info("OrderConfirmation creada con datos mínimos:", {
+      requestId,
       id: orderConfirmation.id,
       internal_order_number: orderConfirmation.internal_order_number,
       shopify_order_id: shopifyOrderId,
       shopify_order_name: shopifyOrderName,
       status: orderConfirmation.status,
-      country: detectedCountry,
-      province: detectedProvince,
+      phone: phone,
+      has_complete_data: hasCompleteData,
       shopify_success: true,
-      currency: shopifyResult.order.currency, // ✅ MOSTRAR LA MONEDA REAL USADA
+      currency: shopifyResult.order.currency,
+      fields_cleaned: {
+        first_name: finalFirstName !== first_name,
+        last_name: finalLastName !== last_name,
+        email: finalEmail !== (email || "").trim().toLowerCase(),
+        address1: cleanAddress1 !== address1,
+        city: cleanCity !== city,
+      },
     });
 
-    // ✅ 3. RESPUESTA AL CLIENTE
+    // ✅ RESPUESTA CON CAMPOS LIMPIOS
     return json(
       {
         success: true,
         type: "order_confirmation",
-        message:
-          "✅ Orden registrada exitosamente - Nos contactaremos contigo a la brevedad, para confirmar tu pedido por llamada. Gracias por contactarnos",
+        requestId: requestId, // ✅ INCLUIR REQUEST ID EN RESPUESTA
+        message: hasCompleteData
+          ? "✅ Orden registrada exitosamente - Nos contactaremos contigo a la brevedad para confirmar tu pedido por llamada."
+          : "✅ Orden registrada exitosamente con tu número de teléfono. Te contactaremos para completar los datos de envío y confirmar tu pedido.",
         orderConfirmation: {
           id: orderConfirmation.id,
           status: orderConfirmation.status,
           total: orderConfirmation.order_total.toString(),
-          currency: shopifyResult.order.currency, // ✅ USAR LA MONEDA REAL DE SHOPIFY
+          currency: shopifyResult.order.currency,
           expiresAt: orderConfirmation.expires_at,
           createdAt: orderConfirmation.created_at,
           shopifyOrderId: shopifyOrderId,
           shopifyOrderName: shopifyOrderName,
+          hasCompleteData: hasCompleteData,
         },
         customer: {
           name: orderConfirmation.customer_name,
-          email: orderConfirmation.customer_email,
-          phone: orderConfirmation.customer_phone,
+          email: finalEmail,
+          phone: phone,
           country: detectedCountry,
           province: detectedProvince,
+          isTemporaryEmail:
+            finalEmail.includes("nobrinda@") ||
+            finalEmail.includes("@temp.") ||
+            finalEmail !== (email || "").trim().toLowerCase(),
         },
         shippingAddress: {
-          city: city,
+          city: finalCity,
           country: detectedCountry,
           province: detectedProvince,
+          needsConfirmation: cleanAddress1 === "", // ✅ true si dirección estaba vacía/inválida
         },
         items: [
           {
@@ -608,16 +852,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           shopifyOrderName: shopifyOrderName,
         },
         nextSteps: {
-          message:
-            "✅ Orden registrada exitosamente - Nos contactaremos contigo a la brevedad, para confirmar tu pedido por llamada. Gracias por contactarnos",
+          message: hasCompleteData
+            ? "Nos contactaremos contigo para confirmar tu pedido."
+            : "Te contactaremos para completar los datos de envío y confirmar tu pedido.",
           callScheduled: true,
           expiresAt: orderConfirmation.expires_at,
-          isPreOrder: false, // ✅ NO es pre-orden porque ya se creó en Shopify
+          isPreOrder: false,
           requiresConfirmation: true,
-          status: "PENDING_CALL", // ✅ USAR TU ESTADO EXISTENTE
+          requiresDataCompletion: !hasCompleteData,
+          status: orderConfirmation.status,
           estimatedCallTime: "a la brevedad",
           shopifyCreated: true,
-          shopCurrency: shopifyResult.order.currency, // ✅ INFORMAR LA MONEDA USADA
+          shopCurrency: shopifyResult.order.currency,
         },
       },
       { headers },
@@ -635,7 +881,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
-// ✅ FUNCIÓN PARA DETECTAR PAÍS Y PROVINCIA
+// ✅ FUNCIÓN PARA DETECTAR PAÍS Y PROVINCIA (SIN CAMBIOS)
 function detectCountryAndProvince(
   city: string | undefined,
   receivedCountry: string | undefined,
@@ -649,9 +895,7 @@ function detectCountryAndProvince(
   logger.info("País recibido:", receivedCountry);
   logger.info("Provincia recibida:", receivedProvince);
 
-  // Si no hay país, detectar automáticamente
   if (!finalCountry || finalCountry.trim() === "") {
-    // Ciudades de Colombia
     const colombiaCities = [
       "bogotá",
       "bogota",
@@ -662,7 +906,6 @@ function detectCountryAndProvince(
       "cartagena",
       "bucaramanga",
     ];
-    // Ciudades de Perú
     const peruCities = [
       "lima",
       "arequipa",
@@ -675,7 +918,6 @@ function detectCountryAndProvince(
       "tacna",
       "ayacucho",
     ];
-    // Ciudades de México
     const mexicoCities = [
       "ciudad de méxico",
       "guadalajara",
@@ -688,7 +930,6 @@ function detectCountryAndProvince(
 
     if (colombiaCities.some((colCity) => cityLower.includes(colCity))) {
       finalCountry = "CO";
-      // Detectar departamento de Colombia
       if (cityLower.includes("bogotá") || cityLower.includes("bogota")) {
         finalProvince = "Cundinamarca";
       } else if (
@@ -705,7 +946,6 @@ function detectCountryAndProvince(
       }
     } else if (peruCities.some((peruCity) => cityLower.includes(peruCity))) {
       finalCountry = "PE";
-      // Detectar departamento de Perú
       if (cityLower.includes("lima")) {
         finalProvince = "Lima";
       } else if (cityLower.includes("arequipa")) {
@@ -717,7 +957,6 @@ function detectCountryAndProvince(
       }
     } else if (mexicoCities.some((mexCity) => cityLower.includes(mexCity))) {
       finalCountry = "MX";
-      // Detectar estado de México
       if (cityLower.includes("ciudad de méxico")) {
         finalProvince = "Ciudad de México";
       } else if (cityLower.includes("guadalajara")) {
@@ -726,7 +965,6 @@ function detectCountryAndProvince(
         finalProvince = "Nuevo León";
       }
     } else {
-      // Por defecto Perú
       finalCountry = "PE";
       finalProvince = "Lima";
     }
