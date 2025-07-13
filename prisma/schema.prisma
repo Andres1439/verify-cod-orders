@@ -94,6 +94,9 @@ model Shop {
   // NUEVAS RELACIONES WHATSAPP/TWILIO
   whatsapp_configuration_2 WhatsAppConfiguration?
   twilio_number          TwilioNumber?
+
+  // AGREGAR ESTA LÍNEA:
+  vonage_configuration VonageConfiguration?
 }
 
 model ChatbotConfiguration {
@@ -161,6 +164,10 @@ model OrderConfirmation {
   // Estado y origen
   source                OrderSource             // CHATBOT_STORE o WHATSAPP
   status                OrderConfirmationStatus @default(PENDING_CALL)
+
+  // ✅ AGREGAR CAMPOS DE VONAGE
+  vonage_call_uuid      String?                 // UUID de la llamada en Vonage
+  dtmf_response         String?                 // Respuesta DTMF del cliente
   
   // Fechas importantes
   call_scheduled_at     DateTime?               // Cuándo se programó la llamada
@@ -176,8 +183,7 @@ model OrderConfirmation {
   @@unique([internal_order_number, shop_id])
   @@index([status])
   @@index([call_scheduled_at])
-  @@index([shopify_order_name])  // ✅ AGREGAR SOLO ESTA LÍNEA
-
+  @@index([shopify_order_name])
 }
 
 // NUEVAS TABLAS WHATSAPP/TWILIO
@@ -238,4 +244,32 @@ model TwilioNumber {
   @@index([status])
   @@index([shop_id])
   @@index([phone_number])
+}
+
+model VonageConfiguration {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shop_id         String   @unique @db.Uuid
+  
+  // Credenciales de Vonage
+  application_id  String   // Application ID de Vonage
+  private_key     String   // Private Key para JWT
+  phone_number    String   // Número virtual para llamadas
+  webhook_base_url String  // Base URL para webhooks
+  
+  // Configuración adicional
+  voice_language  String   @default("es-ES")
+  voice_style     Int      @default(0)
+  call_timeout    Int      @default(30)
+  dtmf_timeout    Int      @default(15)
+  
+  // Estado
+  is_active       Boolean  @default(true)
+  last_used_at    DateTime?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  
+  // Relación
+  shop            Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+  
+  @@map("VonageConfiguration")
 }

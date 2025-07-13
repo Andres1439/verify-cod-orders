@@ -1,4 +1,4 @@
-// app/routes/app.chatbot.tsx (ACTUALIZADO CON PERSONALIZACIÓN)
+// app/routes/app.chatbot.tsx (COMPLETO CON NÚMEROS DE TICKETS REALES)
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { useState, useEffect } from "react";
 import { TitleBar } from "@shopify/app-bridge-react";
@@ -41,6 +41,18 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { logger } from "../utils/logger.server";
+
+// 🎯 FUNCIÓN HELPER PARA NÚMEROS DE TICKET
+const getTicketNumber = (ticketId: string): string => {
+  if (!ticketId) return "TICKET-INVALID";
+  const shortId = ticketId.split("-")[0];
+  return `TICKET-${shortId.toUpperCase()}`;
+};
+
+const getShortTicketId = (ticketId: string): string => {
+  if (!ticketId) return "INVALID";
+  return ticketId.split("-")[0].toUpperCase();
+};
 
 /*
  * Loader para obtener datos iniciales
@@ -150,15 +162,23 @@ export const loader = async ({ request }: { request: Request }) => {
     take: limit,
   });
 
-  // Transformar los tickets al formato esperado por la interfaz
+  // 🎯 TRANSFORMAR TICKETS CON NÚMEROS REALES
   const formattedTickets = tickets.map((ticket) => ({
     id: ticket.id,
+    ticketNumber: getTicketNumber(ticket.id), // TICKET-9BB77C9F
+    shortId: getShortTicketId(ticket.id), // 9BB77C9F
     customerName: ticket.customerName || "Sin nombre",
     customerEmail: ticket.customer_email,
     customerPhone: ticket.customerPhone || "Sin teléfono",
     subject: ticket.subject,
     message: ticket.message,
-    date: ticket.created_at.toLocaleDateString(),
+    date: ticket.created_at.toLocaleDateString("es-ES", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
     status: ticket.status,
   }));
 
@@ -334,6 +354,8 @@ type LoaderData = {
   };
   tickets: Array<{
     id: string;
+    ticketNumber: string;
+    shortId: string;
     customerName: string;
     customerEmail: string;
     customerPhone: string;
@@ -410,7 +432,7 @@ export default function ChatbotPage() {
       // Fuerza "numero" a true siempre
       formData.append(
         `required_${field}`,
-        field === "numero" ? "true" : value.toString()
+        field === "numero" ? "true" : value.toString(),
       );
     });
 
@@ -501,10 +523,11 @@ export default function ChatbotPage() {
     setSelectedTicket(null);
   };
 
-  // Filtrar tickets solo para búsqueda (no afecta paginación)
+  // 🎯 FILTRAR TICKETS CON NÚMEROS REALES
   const filteredTickets = tickets.filter(
     (ticket) =>
-      ticket.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ticket.ticketNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ticket.shortId.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -597,7 +620,7 @@ export default function ChatbotPage() {
                                   welcome_message: value,
                                 }))
                               }
-                              multiline={4}
+                              multiline={2}
                               autoComplete="off"
                               helpText="Este será el primer mensaje que vean tus clientes"
                             />
@@ -624,7 +647,7 @@ export default function ChatbotPage() {
                                   personality: value,
                                 }))
                               }
-                              multiline={4}
+                              multiline={7}
                               autoComplete="off"
                               placeholder="Chatbot amigable que usa emojis, responde de manera casual y ayuda con consultas de productos..."
                               helpText="Describe cómo quieres que se comporte tu chatbot con los clientes"
@@ -642,7 +665,8 @@ export default function ChatbotPage() {
                         </Text>
                         <Text as="p" tone="subdued">
                           Selecciona qué información debe solicitar el chatbot a
-                          los clientes
+                          los clientes. El número de teléfono siempre es
+                          obligatorio.
                         </Text>
 
                         {/* ⚠️ BANNER DE VALIDACIÓN */}
@@ -706,17 +730,19 @@ export default function ChatbotPage() {
                               📋 ¿Cómo funciona?
                             </Text>
                             <Text as="p" variant="bodySm" tone="subdued">
-                              • <strong>Solo campos seleccionados:</strong> El
-                              chatbot solicitará únicamente los campos marcados
-                              como obligatorios, además del número de teléfono
+                              • <strong>Número obligatorio:</strong> El chatbot
+                              siempre solicitará el número de teléfono
+                              (requerido para verificación COD)
                             </Text>
                             <Text as="p" variant="bodySm" tone="subdued">
-                              • <strong>Ejemplo:</strong> Si solo marcas
-                              "Nombre", el chatbot pedirá nombre y teléfono
+                              • <strong>Campos adicionales:</strong> Solo
+                              solicitará los campos que marques como
+                              obligatorios
                             </Text>
                             <Text as="p" variant="bodySm" tone="subdued">
-                              • <strong>Flexibilidad:</strong> Puedes cambiar
-                              estos campos en cualquier momento
+                              • <strong>Ejemplo:</strong> Si marcas "Nombre" y
+                              "Correo", el chatbot pedirá: teléfono, nombre y
+                              correo
                             </Text>
                           </BlockStack>
                         </div>
@@ -730,13 +756,14 @@ export default function ChatbotPage() {
                           }}
                         >
                           <Text as="p" variant="bodySm" tone="subdued">
-                            💡 Campos seleccionados:{" "}
+                            💡 Campos obligatorios:{" "}
                             {
                               Object.values(config.required_fields).filter(
                                 Boolean,
                               ).length
                             }{" "}
-                            de {Object.keys(config.required_fields).length}
+                            de {Object.keys(config.required_fields).length}{" "}
+                            (incluyendo teléfono)
                           </Text>
                         </div>
                       </BlockStack>
@@ -757,7 +784,7 @@ export default function ChatbotPage() {
                       </Button>
                     </Card>
 
-                    {/* 🎫 TICKETS RECIENTES */}
+                    {/* 🎫 TICKETS RECIENTES CON NÚMEROS REALES */}
                     <Card>
                       <BlockStack gap="400">
                         <InlineStack align="space-between" blockAlign="center">
@@ -787,14 +814,14 @@ export default function ChatbotPage() {
                               "text",
                             ]}
                             headings={[
-                              "ID",
+                              "Ticket",
                               "Cliente",
                               "Motivo",
                               "Fecha",
                               "Acción",
                             ]}
                             rows={tickets.slice(0, 3).map((ticket) => [
-                              ticket.id.substring(0, 6) + "...",
+                              ticket.ticketNumber, // TICKET-9BB77C9F
                               ticket.customerName,
                               ticket.subject,
                               ticket.date,
@@ -827,7 +854,7 @@ export default function ChatbotPage() {
                       <div style={{ width: "300px" }}>
                         <TextField
                           label="Buscar tickets"
-                          placeholder="Buscar por ID, cliente, motivo..."
+                          placeholder="Buscar por ticket, cliente, motivo..."
                           value={searchQuery}
                           onChange={setSearchQuery}
                           prefix={<Icon source={SearchIcon} />}
@@ -861,14 +888,14 @@ export default function ChatbotPage() {
                           "text",
                         ]}
                         headings={[
-                          "ID",
+                          "Ticket",
                           "Cliente",
                           "Motivo",
                           "Fecha",
                           "Acción",
                         ]}
                         rows={filteredTickets.map((ticket) => [
-                          ticket.id.substring(0, 6) + "...",
+                          ticket.ticketNumber, // TICKET-9BB77C9F
                           ticket.customerName,
                           ticket.subject,
                           ticket.date,
@@ -890,11 +917,15 @@ export default function ChatbotPage() {
           </Layout>
         </Tabs>
 
-        {/* MODAL PARA VER DETALLES DEL TICKET */}
+        {/* 🎫 MODAL CON NÚMEROS DE TICKETS REALES */}
         <Modal
           open={isModalOpen}
           onClose={closeModal}
-          title="Detalles del Ticket"
+          title={
+            selectedTicket
+              ? `Detalles del ${selectedTicket.ticketNumber}`
+              : "Detalles del Ticket"
+          }
           primaryAction={{
             content: "Cerrar",
             onAction: closeModal,
@@ -904,13 +935,18 @@ export default function ChatbotPage() {
           <Modal.Section>
             {selectedTicket && (
               <BlockStack gap="400">
-                {/* ID del ticket */}
+                {/* Información del ticket con número real */}
                 <InlineStack gap="200" blockAlign="center">
                   <Text as="h3" variant="headingMd">
-                    ID: {selectedTicket.id}
+                    {selectedTicket.ticketNumber}
                   </Text>
                   {getStatusBadge(selectedTicket.status)}
                 </InlineStack>
+
+                {/* ID interno para referencia */}
+                <Text as="p" variant="bodySm" tone="subdued">
+                  ID interno: {selectedTicket.id}
+                </Text>
 
                 {/* Información del cliente */}
                 <Card>

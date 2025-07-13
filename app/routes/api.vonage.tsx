@@ -297,7 +297,7 @@ async function updateShopifyOrder(
   shopifyOrderId: string,
   action: "confirm" | "decline",
   requestId: string,
-): Promise<{ success: boolean; orderName?: string }> {
+): Promise<{ success: boolean; orderName: string | undefined }> {
   try {
     logger.info("Actualizando orden en Shopify", {
       requestId,
@@ -461,7 +461,7 @@ async function updateShopifyOrder(
 
         if (deleteResult.data?.draftOrderDelete?.deletedId) {
           logger.info("Draft Order eliminada", { requestId });
-          return { success: true };
+          return { success: true, orderName: undefined };
         }
       }
     }
@@ -544,9 +544,9 @@ async function handleConfirmRequest(
     requestId,
   );
 
-  let shopifyResult = {
+  let shopifyResult: { success: boolean; orderName: string | undefined } = {
     success: false,
-    orderName: undefined as string | undefined,
+    orderName: undefined,
   };
 
   // Actualizar Shopify

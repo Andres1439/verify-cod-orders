@@ -1,8 +1,23 @@
-// app/routes/api.products.tsx - VERSIÓN FINAL SHOPIFY 2025-04
+// app/routes/api.products.tsx - VERSIÓN CORREGIDA CON EXTRACCIÓN DE IDs
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
 import { decryptToken } from "../utils/encryption.server";
+
+// ✅ FUNCIÓN CRÍTICA: Extraer solo el número del ID GraphQL
+function extractNumericId(graphqlId: string): string {
+  if (!graphqlId) return "";
+
+  // Si es un ID GraphQL (gid://shopify/ProductVariant/44787807060156)
+  if (graphqlId.includes("gid://shopify/")) {
+    const parts = graphqlId.split("/");
+    const numericId = parts[parts.length - 1];
+    return numericId || graphqlId;
+  }
+
+  // Si ya es un número, devolverlo tal como está
+  return graphqlId;
+}
 
 // Tipos TypeScript basados en Shopify GraphQL 2025-04
 interface ProductVariant {
@@ -67,12 +82,18 @@ interface ProductEdge {
   node: ProductNode;
 }
 
+// ✅ FORMATO CORREGIDO: variant_id y product_id como números puros
 interface FormattedProduct {
+  // ✅ IDs CRÍTICOS para N8N: Solo números
+  variant_id: string; // "44787807060156"
+  product_id: string; // "8801569996988"
+  product_name: string; // "The Archived Snowboard"
+  price: string; // "629.95"
+  inventory_quantity: number; // 5
+
+  // Información adicional
   id: string;
-  product_id: string;
-  variant_id: string;
   title: string;
-  product_name: string;
   handle: string;
   description: string;
   status: string;
@@ -81,19 +102,18 @@ interface FormattedProduct {
     url: string;
     altText?: string;
   } | null;
-  price: number;
   priceRange: {
     min: number;
     max: number;
     currency: string;
   };
-  inventory_quantity: number;
   available: boolean;
   hasStock: boolean;
   variant_title: string;
   sku?: string;
   variants: Array<{
     id: string;
+    variant_id: string; // ✅ También números puros en variantes
     title: string;
     price: number;
     available: boolean;
@@ -117,6 +137,10 @@ interface FormattedProduct {
   createdAt: string;
   updatedAt: string;
   cursor: string;
+
+  // ✅ IDs completos para referencia si se necesitan
+  graphql_variant_id: string;
+  graphql_product_id: string;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -341,7 +365,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       `[API Products] Productos encontrados en Shopify: ${rawProducts.length}`,
     );
 
-    // Procesar y filtrar productos con stock
+    // ✅ PROCESAMIENTO CORREGIDO: Extraer IDs numéricos
     const productsWithStock: FormattedProduct[] = rawProducts
       .map((edge: ProductEdge) => {
         const node = edge.node;
@@ -351,6 +375,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           const variant = variantEdge.node;
           return {
             id: variant.id,
+            variant_id: extractNumericId(variant.id), // ✅ EXTRAER NÚMERO PURO
             title: variant.title,
             price: parseFloat(variant.price),
             available: variant.availableForSale,
@@ -373,15 +398,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // Usar la primera variante disponible como principal
         const primaryVariant = availableVariants[0];
 
-        return {
-          // IDs
-          id: node.id,
-          product_id: node.id,
-          variant_id: primaryVariant.id,
-
-          // Información básica
-          title: node.title,
+        // ✅ LOG PARA VERIFICAR EXTRACCIÓN DE IDs
+        console.log(`[API Products] Procesando producto:`, {
+          original_product_id: node.id,
+          extracted_product_id: extractNumericId(node.id),
+          original_variant_id: primaryVariant.id,
+          extracted_variant_id: extractNumericId(primaryVariant.id),
           product_name: node.title,
+          price: primaryVariant.price,
+        });
+
+        return {
+          // ✅ IDs CRÍTICOS: Solo números puros
+          variant_id: extractNumericId(primaryVariant.id), // "44787807060156"
+          product_id: extractNumericId(node.id), // "8801569996988"
+          product_name: node.title, // "The Archived Snowboard"
+          price: primaryVariant.price.toString(), // "629.95"
+          inventory_quantity: primaryVariant.inventory_quantity, // 5
+
+          // ✅ Información completa (mantener para compatibilidad)
+          id: node.id,
+          title: node.title,
           handle: node.handle,
           description: node.description || "",
           status: node.status,
@@ -396,15 +433,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             : null,
 
           // Precios
-          price: primaryVariant.price,
           priceRange: {
             min: parseFloat(node.priceRangeV2.minVariantPrice.amount),
             max: parseFloat(node.priceRangeV2.maxVariantPrice.amount),
             currency: node.priceRangeV2.minVariantPrice.currencyCode,
           },
 
-          // Stock (campo crítico para N8N)
-          inventory_quantity: primaryVariant.inventory_quantity,
+          // Stock
           available: primaryVariant.available,
           hasStock: true,
 
@@ -412,7 +447,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           variant_title: primaryVariant.title,
           sku: primaryVariant.sku,
 
-          // Todas las variantes disponibles
+          // ✅ Todas las variantes con IDs numéricos
           variants: availableVariants,
 
           // Opciones del producto
@@ -431,12 +466,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
           // Paginación
           cursor: edge.cursor,
+
+          // ✅ IDs completos GraphQL para referencia
+          graphql_variant_id: primaryVariant.id,
+          graphql_product_id: node.id,
         };
       })
       .filter(
         (product: FormattedProduct | null): product is FormattedProduct =>
           product !== null,
       );
+
+    // ✅ LOG FINAL para verificar el primer producto
+    if (productsWithStock.length > 0) {
+      const firstProduct = productsWithStock[0];
+      console.log(`[API Products] Primer producto procesado:`, {
+        variant_id: firstProduct.variant_id,
+        product_name: firstProduct.product_name,
+        price: firstProduct.price,
+        inventory_quantity: firstProduct.inventory_quantity,
+        is_variant_id_numeric: /^\d+$/.test(firstProduct.variant_id),
+        is_product_name_string:
+          typeof firstProduct.product_name === "string" &&
+          !firstProduct.product_name.includes("gid://"),
+      });
+    }
 
     const result = {
       success: true,
@@ -461,7 +515,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     };
 
     console.log(
-      `[API Products] Respuesta: ${productsWithStock.length} productos con stock`,
+      `[API Products] Respuesta final: ${productsWithStock.length} productos con stock`,
     );
     return json(result, { headers });
   } catch (error) {

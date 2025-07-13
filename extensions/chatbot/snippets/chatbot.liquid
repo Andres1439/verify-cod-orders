@@ -1,21 +1,29 @@
 {% comment %}
-  Snippet para desarrollo local
+  Snippet del chatbot - Versión de Producción
 {% endcomment %}
 
 <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
-
 {{ 'chatbot.css' | asset_url | stylesheet_tag }}
 
 <script type="module">
   import { createChat } from "https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js";
 
   async function fetchChatbotConfiguration(shopDomain) {
-    const apiUrls = [
-      `https://travels-planned-tigers-juice.trycloudflare.com/api/chatbot-config?shop=${shopDomain}`,
-    ];
+    // Probar múltiples variaciones del dominio
+    const domainVariations = [
+      shopDomain,
+      shopDomain.replace('.myshopify.com', ''),
+      `${shopDomain}.myshopify.com`,
+      '{{ shop.myshopify_domain }}',
+      '{{ shop.domain }}',
+    ].filter((domain, index, self) => domain && self.indexOf(domain) === index);
+
+    const baseUrl = "https://missing-critics-classifieds-spirits.trycloudflare.com/api/chatbot-config";
     
-    for (const apiUrl of apiUrls) {
+    for (const domain of domainVariations) {
       try {
+        const apiUrl = `${baseUrl}?shop_domain=${encodeURIComponent(domain)}`;
+        
         const response = await fetch(apiUrl, {
           method: 'GET',
           headers: {
@@ -26,68 +34,67 @@
         
         if (response.ok) {
           const data = await response.json();
-          return data;
+          
+          if (data.success && data.chatbot_config) {
+            return {
+              bot_name: data.chatbot_config.bot_name || "Verify",
+              welcome_message: data.chatbot_config.welcome_message || "¡Hola! ¿En qué puedo ayudarte?",
+              personality: data.chatbot_config.personality || "",
+              is_active: data.chatbot_config.is_active !== false,
+              required_fields: data.chatbot_config.required_fields || {}
+            };
+          }
         }
         
       } catch (error) {
-        continue; // Probar siguiente URL
+        continue; // Continuar con el siguiente dominio
       }
     }
     
-    // Si ninguna URL funciona, usar fallback
+    // Configuración por defecto si no se puede conectar
     return {
-      bot_name: "Verify (Local)",
-      welcome_message: "¡Hola! Configuración local activa",
+      bot_name: "Verify",
+      welcome_message: "¡Hola! ¿En qué puedo ayudarte?",
       is_active: true
     };
   }
   
   async function initializeChatbot() {
-    const shopDomain = '{{ shop.permanent_domain }}';
-    
-    // Obtener configuración
-    const config = await fetchChatbotConfiguration(shopDomain);
-
-    // Verificar si está activo
-    if (!config.is_active) {
-      return;
-    }
-
-    // Crear chatbot
     try {
+      const shopDomain = '{{ shop.permanent_domain }}';
+      const config = await fetchChatbotConfiguration(shopDomain);
+
+      // Solo crear el chatbot si está activo
+      if (!config.is_active) {
+        return;
+      }
+
+      // Crear chatbot
       createChat({
         webhookUrl: window.N8N_WEBHOOK_URL || "https://verify-test.app.n8n.cloud/webhook/afc49feb-3869-4849-9ccc-41d6909933a6/chat",
-        initialMessages: [config.welcome_message || "¡Hola! ¿En qué puedo ayudarte?"],
+        initialMessages: [config.welcome_message],
         metadata: {
           shopDomain: shopDomain
         },
         i18n: {
           en: {
-            title: config.bot_name || "Verify",
+            title: config.bot_name,
             subtitle: "Comienza un chat, nosotros te ayudamos.",
             inputPlaceholder: "Escríbenos un mensaje...",
           },
         },
       });
       
-    } catch (chatError) {
-      console.error("Error al crear chatbot:", chatError);
+    } catch (error) {
+      console.error("Error al inicializar chatbot:", error);
     }
   }
 
-  // Debug functions (solo en desarrollo)
-  if (window.location.hostname === 'localhost' || window.location.hostname.includes('trycloudflare.com')) {
+  // Solo incluir funciones de debug en desarrollo
+  if (window.location.hostname.includes('localhost') || window.location.search.includes('debug=true')) {
     window.debugChatbot = {
       test: () => fetchChatbotConfiguration('{{ shop.permanent_domain }}'),
-      reload: initializeChatbot,
-      checkElements: () => {
-        return {
-          chatWindow: document.querySelector('.chat-window'),
-          anyChat: document.querySelector('*[class*="chat"]'),
-          scripts: document.querySelectorAll('script[src*="n8n"]'),
-          totalElements: document.querySelectorAll('*').length
-        };
-      }
+      reload: initializeChatbot
     };
   }
 

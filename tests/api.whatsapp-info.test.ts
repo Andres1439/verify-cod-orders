@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from "vitest";
-import { action } from "../app/routes/api.whatsapp";
+import { action } from "../app/routes/api.twilio-beta";
 
 vi.mock("../app/db.server", () => ({
   default: {

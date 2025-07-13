@@ -1,10 +1,9 @@
-// app/routes/api.create-ticket.tsx (CORREGIDA FINAL)
+// app/routes/api.create-ticket.tsx (ACTUALIZADA CON NÚMERO REAL)
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
 import { SecurityAudit } from "../utils/security-audit.server";
 
-// Esta función 'action' se ejecuta cuando recibe una petición POST
 export const action = async ({ request }: ActionFunctionArgs) => {
   const headers = new Headers();
   headers.append("Access-Control-Allow-Origin", "*");
@@ -12,7 +11,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   headers.append("Access-Control-Allow-Headers", "Content-Type");
   headers.append("Content-Type", "application/json");
 
-  // Manejar preflight OPTIONS request
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 200, headers });
   }
@@ -29,9 +27,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       message,
     } = body;
 
-    // Validación estricta y sanitización
+    // Validación estricta
     if ((!shopId && !shopDomain) || !customerEmail || !subject || !message) {
-      if (process.env.NODE_ENV !== 'production') {
+      if (process.env.NODE_ENV !== "production") {
         console.log("❌ [API] Faltan parámetros:", {
           shopId: !!shopId,
           shopDomain: !!shopDomain,
@@ -44,9 +42,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
       SecurityAudit.log({
         shopId: shopId || shopDomain || "unknown",
-        action: 'CREATE_TICKET_MISSING_PARAMS',
+        action: "CREATE_TICKET_MISSING_PARAMS",
         success: false,
-        details: { customerEmail, subject }
+        details: { customerEmail, subject },
       });
       return json(
         {
@@ -58,17 +56,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    // Validar formato básico del email
+    // Validar formato del email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(customerEmail)) {
-      if (process.env.NODE_ENV !== 'production') {
+      if (process.env.NODE_ENV !== "production") {
         console.log("❌ [API] Email inválido:", customerEmail);
       }
       SecurityAudit.log({
         shopId: shopId || shopDomain || "unknown",
-        action: 'CREATE_TICKET_INVALID_EMAIL',
+        action: "CREATE_TICKET_INVALID_EMAIL",
         success: false,
-        details: { customerEmail }
+        details: { customerEmail },
       });
       return json(
         {
@@ -79,21 +77,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    // Verificar que la tienda existe - buscar por ID o dominio
+    // Verificar que la tienda existe
     const shop = await db.shop.findUnique({
       where: shopId ? { id: shopId } : { shop_domain: shopDomain },
       select: { id: true, shop_domain: true },
     });
 
     if (!shop) {
-      if (process.env.NODE_ENV !== 'production') {
+      if (process.env.NODE_ENV !== "production") {
         console.log("❌ [API] Tienda no encontrada:", shopId || shopDomain);
       }
       SecurityAudit.log({
         shopId: shopId || shopDomain || "unknown",
-        action: 'CREATE_TICKET_SHOP_NOT_FOUND',
+        action: "CREATE_TICKET_SHOP_NOT_FOUND",
         success: false,
-        details: { customerEmail }
+        details: { customerEmail },
       });
       return json(
         {
@@ -104,30 +102,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    // Generar número de ticket único y legible
-    const ticketNumber = `TICKET-${Math.floor(10000 + Math.random() * 90000)}`;
-
     console.log("📝 [API] Creando ticket para tienda:", shop.shop_domain);
 
-    // Crear el ticket CON LOS NUEVOS CAMPOS
+    // Crear el ticket
     const newTicket = await db.ticket.create({
       data: {
-        shop_id: shop.id, // ✅ Usar shop.id en lugar de shopId
+        shop_id: shop.id,
         customer_email: customerEmail.trim().toLowerCase(),
-        customerName: customerName ? customerName.trim() : null, // ✅ Agregar customerName
-        customerPhone: customerPhone ? customerPhone.trim() : null, // ✅ Agregar customerPhone
-        shopDomain: shop.shop_domain, // ✅ Agregar shopDomain
+        customerName: customerName ? customerName.trim() : null,
+        customerPhone: customerPhone ? customerPhone.trim() : null,
+        shopDomain: shop.shop_domain,
         subject: subject.trim(),
         message: message.trim(),
         status: "PENDING",
-        // Los campos created_at y updated_at se manejan automáticamente
       },
       select: {
         id: true,
         customer_email: true,
-        customerName: true, // ✅ Incluir en select
-        customerPhone: true, // ✅ Incluir en select
-        shopDomain: true, // ✅ Incluir en select
+        customerName: true,
+        customerPhone: true,
+        shopDomain: true,
         subject: true,
         status: true,
         created_at: true,
@@ -139,40 +133,44 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       },
     });
 
+    // 🎯 GENERAR NÚMERO DE TICKET BASADO EN UUID REAL
+    const ticketShortId = newTicket.id.split("-")[0]; // Tomar parte antes del primer guión
+    const ticketNumber = `TICKET-${ticketShortId}`;
+
     console.log(
-      `✅ [API] Ticket creado: ${newTicket.id} para la tienda ${shop.shop_domain}`,
+      `✅ [API] Ticket creado: ${newTicket.id} (${ticketNumber}) para la tienda ${shop.shop_domain}`,
     );
 
     SecurityAudit.log({
       shopId: shop.id,
-      action: 'CREATE_TICKET_SUCCESS',
+      action: "CREATE_TICKET_SUCCESS",
       success: true,
-      details: { customerEmail, ticketId: newTicket.id }
+      details: { customerEmail, ticketId: newTicket.id, ticketNumber },
     });
 
-    // Respuesta exitosa con información del ticket
+    // 🎯 RESPUESTA CON NÚMERO DE TICKET REAL
     return json(
       {
         success: true,
         ticket: {
           id: newTicket.id,
-          ticketNumber: ticketNumber, // Para mostrar al cliente
+          ticketNumber: ticketNumber, // TICKET-9bb77c9f
+          ticketShortId: ticketShortId, // 9bb77c9f
           customerEmail: newTicket.customer_email,
-          customerName: newTicket.customerName, // ✅ Ahora existe en el objeto
-          customerPhone: newTicket.customerPhone, // ✅ Ahora existe en el objeto
+          customerName: newTicket.customerName,
+          customerPhone: newTicket.customerPhone,
           subject: newTicket.subject,
           status: newTicket.status,
           createdAt: newTicket.created_at,
           shopDomain: newTicket.shop.shop_domain,
         },
-        message: "Ticket creado exitosamente",
+        message: `¡Tu ticket ha sido creado exitosamente! 🎫✨\nNúmero de ticket: ${ticketNumber}\nNuestro equipo se pondrá en contacto contigo pronto.`,
       },
       { headers },
     );
   } catch (error) {
     console.error("💥 [API] Error al crear el ticket:", error);
 
-    // Manejar errores específicos de Prisma
     if (error instanceof Error) {
       if (error.message.includes("Foreign key constraint")) {
         return json(
@@ -194,7 +192,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         );
       }
 
-      // Log del error específico para debugging
       console.error("💥 [API] Error detallado:", error.message);
     }
 
@@ -208,7 +205,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
-// Endpoint GET para verificar que la API funciona (opcional)
 export const loader = async () => {
   return json({
     message: "API de tickets funcionando correctamente",
