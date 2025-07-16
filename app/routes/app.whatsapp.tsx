@@ -1,8 +1,8 @@
-// app/routes/app.whatsapp.tsx
+// app/routes/app.whatsapp.tsx - VERSIÓN FINAL LIMPIA
 import { useState } from "react";
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
-import { useLoaderData, useFetcher } from "@remix-run/react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
+import { useLoaderData, useSubmit, useNavigation } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -14,248 +14,324 @@ import {
   InlineStack,
   Badge,
   Modal,
-  Spinner,
-  CalloutCard,
   Icon,
-  ButtonGroup,
   Divider,
+  Spinner,
 } from "@shopify/polaris";
 import {
-  PhoneIcon,
-  ConnectIcon,
-  XIcon,
-  ExternalIcon,
   CheckCircleIcon,
-  ChatIcon,
+  StoreIcon,
 } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
+import db from "../db.server";
+
+// Tipos manuales para evitar problemas con Prisma
+interface ShopData {
+  id: string;
+  domain: string;
+  subscriptionPlan: string | null;
+  storeName: string;
+}
+
+interface AssignedNumberData {
+  id: string;
+  phoneNumber: string;
+  displayName: string | null;
+  status: string;
+  assignedAt: string;
+  countryCode: string;
+  webhookUrl: string | null;
+  businessAccountId: string | null;
+}
+
+interface LoaderData {
+  shop: ShopData;
+  assignedNumber: AssignedNumberData | null;
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { session } = await authenticate.admin(request);
-
-  // Obtener datos usando nuestra API
-  const apiUrl = `${process.env.APP_URL || "http://localhost:3000"}/api/whatsapp`;
-
   try {
-    const response = await fetch(apiUrl, {
-      headers: {
-        Authorization: `Bearer ${session.accessToken}`,
-        "X-Shopify-Shop-Domain": session.shop,
-      },
+    const { session } = await authenticate.admin(request);
+
+    // Ahora podemos usar include con la nueva relación
+    const shop: any = await db.shop.findUnique({
+      where: { shop_domain: session.shop },
+      include: {
+        chatbot_configuration: true,
+        whatsAppNumbers: {
+          where: { status: 'ACTIVE' }
+        }
+      }
     });
 
-    if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
+    if (!shop) {
+      throw new Error("Tienda no encontrada");
     }
 
-    const apiData = await response.json();
+    // El número asignado viene de la relación
+    const assignedNumber = shop.whatsAppNumbers?.[0] || null;
 
-    return json({
-      success: apiData.success,
-      ...apiData.data,
-      appUrl: process.env.APP_URL || "http://localhost:3000",
-    });
-  } catch (error) {
-    console.error("Error cargando datos WhatsApp:", error);
-
-    // Fallback: datos básicos desde la sesión
-    return json({
-      success: false,
+    const responseData: LoaderData = {
       shop: {
-        id: null,
-        domain: session.shop,
-        subscriptionPlan: "BASIC",
+        id: shop.id,
+        domain: shop.shop_domain,
+        subscriptionPlan: shop.subscription_plan,
+        // Forzar usar el dominio transformado en lugar del bot_name "Verify"
+        storeName: shop.shop_domain.replace('.myshopify.com', '').replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
       },
-      assignedNumber: null,
-      whatsappConfig: null,
-      statistics: {
-        availableNumbers: 0,
-        totalNumbers: 0,
-        assignedNumbers: 0,
-      },
-      appUrl: process.env.APP_URL || "http://localhost:3000",
-      error: error instanceof Error ? error.message : "Error cargando datos",
+      assignedNumber: assignedNumber ? {
+        id: assignedNumber.id,
+        phoneNumber: assignedNumber.phone_number,
+        displayName: assignedNumber.display_name,
+        status: String(assignedNumber.status),
+        assignedAt: assignedNumber.updated_at instanceof Date ? assignedNumber.updated_at.toISOString() : String(assignedNumber.updated_at),
+        countryCode: assignedNumber.country_code,
+        webhookUrl: assignedNumber.webhook_url,
+        businessAccountId: assignedNumber.business_account_id,
+      } : null,
+    };
+
+    return json(responseData);
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    console.error("❌ Error cargando datos WhatsApp:", error);
+    throw new Error("Error cargando datos de WhatsApp");
+  }
+}
+
+export async function action({ request }: ActionFunctionArgs) {
+  try {
+    const { session } = await authenticate.admin(request);
+    const formData = await request.formData();
+    const actionType = formData.get("actionType") as string;
+
+    const shop: any = await db.shop.findUnique({
+      where: { shop_domain: session.shop },
     });
+
+    if (!shop) {
+      throw new Error("Tienda no encontrada");
+    }
+
+    if (actionType === "activate_whatsapp") {
+      if (shop.subscription_plan === 'FREE') {
+        throw new Error("Plan BASIC o superior requerido");
+      }
+
+      const existingNumber: any = await db.whatsAppNumber.findFirst({
+        where: { 
+          default_shop_id: shop.id,
+          status: 'ACTIVE'
+        }
+      });
+
+      if (existingNumber) {
+        throw new Error("Ya tienes un número WhatsApp asignado");
+      }
+
+      const availableInstance: any = await db.whatsAppNumber.findFirst({
+        where: { 
+          status: 'ACTIVE',
+          default_shop_id: null
+        },
+        orderBy: { created_at: 'asc' }
+      });
+
+      if (!availableInstance) {
+        throw new Error("No hay números WhatsApp disponibles en este momento");
+      }
+
+      await db.whatsAppNumber.update({
+        where: { id: availableInstance.id },
+        data: { 
+          default_shop_id: shop.id,
+          updated_at: new Date()
+        }
+      });
+
+      return redirect("/app/whatsapp");
+    }
+
+    if (actionType === "deactivate_whatsapp") {
+      const assignedInstance: any = await db.whatsAppNumber.findFirst({
+        where: { 
+          default_shop_id: shop.id,
+          status: 'ACTIVE'
+        }
+      });
+
+      if (!assignedInstance) {
+        throw new Error("No tienes número WhatsApp asignado");
+      }
+
+      await db.whatsAppNumber.update({
+        where: { id: assignedInstance.id },
+        data: { 
+          default_shop_id: null,
+          detection_rules: {},
+          updated_at: new Date()
+        }
+      });
+
+      return redirect("/app/whatsapp");
+    }
+
+    throw new Error("Acción no válida");
+  } catch (error) {
+    console.error("Error en action WhatsApp:", error);
+    throw new Error(error instanceof Error ? error.message : "Error interno del servidor");
   }
 }
 
 export default function WhatsAppDashboard() {
-  const {
-    success,
-    shop,
-    assignedNumber,
-    whatsappConfig,
-    statistics,
-    appUrl,
-    error,
-  } = useLoaderData<typeof loader>();
+  const data = useLoaderData<LoaderData>();
+  const submit = useSubmit();
+  const navigation = useNavigation();
+  
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
 
-  const fetcher = useFetcher();
+  const isActivating = navigation.state === "submitting" && 
+                      navigation.formData?.get("actionType") === "activate_whatsapp";
+  const isDeactivating = navigation.state === "submitting" && 
+                        navigation.formData?.get("actionType") === "deactivate_whatsapp";
 
-  // Estados para UI
-  const [isAssigning, setIsAssigning] = useState(false);
-  const [showReleaseModal, setShowReleaseModal] = useState(false);
-
-  // Función para asignar número
-  const handleAssignNumber = async () => {
-    setIsAssigning(true);
-
-    try {
-      const response = await fetch("/api/whatsapp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "assign_number" }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        // Recargar página para mostrar el nuevo número
-        window.location.reload();
-      } else {
-        console.error("Error asignando número:", result.error);
-        // Aquí podrías mostrar un toast de error
-      }
-    } catch (error) {
-      console.error("Error en la solicitud:", error);
-    }
-
-    setIsAssigning(false);
+  const handleActivateWhatsApp = () => {
+    const formData = new FormData();
+    formData.append("actionType", "activate_whatsapp");
+    submit(formData, { method: "post" });
   };
 
-  // Función para liberar número
-  const handleReleaseNumber = async () => {
-    try {
-      const response = await fetch("/api/whatsapp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "release_number" }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setShowReleaseModal(false);
-        window.location.reload();
-      } else {
-        console.error("Error liberando número:", result.error);
-      }
-    } catch (error) {
-      console.error("Error en la solicitud:", error);
-    }
+  const handleDeactivateWhatsApp = () => {
+    const formData = new FormData();
+    formData.append("actionType", "deactivate_whatsapp");
+    submit(formData, { method: "post" });
+    setShowDeactivateModal(false);
   };
 
-  // Estados y colores
-  const serviceStatus = assignedNumber ? "connected" : "disconnected";
+  const canActivateWhatsApp = Boolean(
+    data.shop.subscriptionPlan && data.shop.subscriptionPlan !== "FREE"
+  );
+  
+  const serviceStatus = data.assignedNumber ? "connected" : "disconnected";
   const statusColor = serviceStatus === "connected" ? "success" : "critical";
-  const statusText =
-    serviceStatus === "connected"
-      ? "WhatsApp Conectado"
-      : "Sin WhatsApp Activado";
-  const canAssignNumber =
-    shop.subscriptionPlan && shop.subscriptionPlan !== "FREE";
+  const statusText = serviceStatus === "connected" ? "WhatsApp Activo" : "WhatsApp Inactivo";
+
+  // Generar link único para esta tienda
+  const generateUniqueLink = () => {
+    if (!data.assignedNumber) return null;
+    
+    const storeName = data.shop.domain.replace('.myshopify.com', '').toLowerCase();
+    const cleanNumber = data.assignedNumber.phoneNumber.replace(/[^0-9]/g, '');
+    const code = `start_${storeName}`;
+    return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(code)}`;
+  };
+
+  const uniqueLink = generateUniqueLink();
+
+  // Loading completo cuando está activando
+  if (isActivating) {
+    return (
+      <div style={{
+        width: "100vw",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "16px",
+        background: "#ffffff"
+      }}>
+        <Spinner accessibilityLabel="Asignando número WhatsApp..." size="large" />
+        <Text variant="headingSm" as="p">
+          Asignando número WhatsApp para {data.shop.storeName}...
+        </Text>
+        <Text as="p" tone="subdued">
+          Esto puede tomar unos segundos
+        </Text>
+      </div>
+    );
+  }
 
   return (
     <Page
       title="WhatsApp Business"
-      subtitle="Conecta un número temporal de WhatsApp para atender a tus clientes con inteligencia artificial"
+      subtitle="Conecta WhatsApp Business con tu tienda y atiende a tus clientes con inteligencia artificial"
       primaryAction={
-        assignedNumber ? (
-          <ButtonGroup>
-            <Button
-              variant="primary"
-              icon={PhoneIcon}
-              url={`https://wa.me/${assignedNumber.phoneNumber.replace("+", "")}`}
-              external
-              target="_blank"
-            >
-              Abrir WhatsApp
-            </Button>
-            <Button 
-              tone="critical" 
-              icon={XIcon} 
-              onClick={() => setShowReleaseModal(true)}
-            >
-              Liberar Número
-            </Button>
-          </ButtonGroup>
-        ) : (
-          <Button
-            variant="primary"
-            icon={ConnectIcon}
-            onClick={handleAssignNumber}
-            loading={isAssigning}
-            disabled={!canAssignNumber}
-          >
-            {isAssigning ? "Activando..." : "Activar WhatsApp"}
-          </Button>
-        )
+        data.assignedNumber ? {
+          content: "Liberar Número",
+          destructive: true,
+          onAction: () => setShowDeactivateModal(true),
+          loading: isDeactivating,
+        } : {
+          content: "Asignar Número WhatsApp",
+          variant: "primary",
+          disabled: !canActivateWhatsApp,
+          onAction: handleActivateWhatsApp,
+        }
       }
     >
+      
       <Layout>
         <Layout.Section>
-          {/* Banner de Upgrade si es necesario */}
-          {!canAssignNumber && (
-            <Banner
-              title="Upgrade Requerido para WhatsApp Business"
-              tone="info"
-              action={{
-                content: "Ver Planes",
-                url: "/app/pricing",
-              }}
-            >
-              <p>
-                Necesitas un plan <strong>BASIC</strong> o superior para obtener
-                un número temporal de WhatsApp Business con agente de IA integrado.
-              </p>
-            </Banner>
-          )}
+          <BlockStack gap="500">
+            {/* Banner de Upgrade si es necesario */}
+            {!canActivateWhatsApp && (
+              <Banner
+                title="Upgrade Requerido para WhatsApp Business"
+                tone="info"
+                action={{
+                  content: "Ver Planes",
+                  url: "/app/pricing",
+                }}
+              >
+                <p>
+                  Necesitas un plan <strong>BASIC</strong> o superior para acceder a 
+                  WhatsApp Business con agente de IA integrado.
+                </p>
+              </Banner>
+            )}
 
-          {/* Estado Principal */}
-          {assignedNumber ? (
-            // Mostrar información del número asignado
-            <Card>
-              <BlockStack gap="400">
-                <InlineStack align="space-between">
-                  <BlockStack gap="200">
-                    <Text variant="headingMd" as="h2">
-                      🎉 ¡WhatsApp Business Activado!
+            {/* Estado Principal */}
+            {data.assignedNumber ? (
+              // ✅ MOSTRAR WHATSAPP ACTIVO CON INFORMACIÓN DE TIENDA
+              <Card>
+                <BlockStack gap="400">
+                  <InlineStack align="space-between">
+                    <BlockStack gap="200">
+                      <InlineStack gap="200" align="start">
+                        <Text variant="headingLg" as="h2">
+                          📱 WhatsApp Business - {data.shop.storeName}
+                        </Text>
+                      </InlineStack>
+                      <InlineStack gap="200" align="start">
+                        <Badge tone={statusColor}>{statusText}</Badge>
+                        <Badge tone="success">Agente IA: Activo</Badge>
+                        <Badge tone="info">Respuestas: 24/7</Badge>
+                        <Badge tone="attention">Tienda Asignada</Badge>
+                      </InlineStack>
+                    </BlockStack>
+                  </InlineStack>
+
+                  <Divider />
+
+                  {/* Información del Número Asignado */}
+                  <BlockStack gap="300">
+                    <Text variant="headingMd" as="h3">
+                      📞 Información del Número Asignado
                     </Text>
-                    <InlineStack gap="200" align="start">
-                      <Badge tone={statusColor}>{statusText}</Badge>
-                      <Badge tone="success">Agente IA: Activo</Badge>
-                      <Badge tone="info">{`Plan: ${shop.subscriptionPlan}`}</Badge>
-                    </InlineStack>
-                  </BlockStack>
-                  <Icon source={CheckCircleIcon} tone="success" />
-                </InlineStack>
-
-                <Divider />
-
-                <BlockStack gap="300">
-                  <Text variant="headingSm" as="h3">
-                    Información de tu Número Temporal
-                  </Text>
-                  
-                  <div style={{ width: "100%" }}>
+                    
                     <Layout>
                       <Layout.Section>
                         <BlockStack gap="200">
                           <Text as="p">
-                            <strong>📱 Número WhatsApp:</strong>{" "}
-                            <Text as="span" variant="bodyLg" tone="subdued">
-                              {assignedNumber.phoneNumber}
+                            <strong>Número WhatsApp:</strong>{" "}
+                            <Text as="span" tone="subdued" variant="bodyLg">
+                              {data.assignedNumber.phoneNumber}
                             </Text>
                           </Text>
                           <Text as="p">
-                            <strong>🌍 País:</strong> {assignedNumber.countryCode}
-                          </Text>
-                          <Text as="p">
-                            <strong>📊 Tipo:</strong> {assignedNumber.numberType}
-                          </Text>
-                          <Text as="p" tone="subdued">
-                            ✅ Activado el:{" "}
-                            {new Date(assignedNumber.assignedAt!).toLocaleDateString("es-PE")}
+                            <strong>Tienda Asignada:</strong>{" "}
+                            <Badge>{data.shop.storeName}</Badge>
                           </Text>
                         </BlockStack>
                       </Layout.Section>
@@ -263,239 +339,172 @@ export default function WhatsAppDashboard() {
                       <Layout.Section>
                         <BlockStack gap="200">
                           <Text as="p">
-                            <strong>🤖 Agente IA:</strong> Funcionando 24/7
+                            <strong>Estado:</strong> <Badge tone="success">Conectado</Badge>
                           </Text>
                           <Text as="p">
-                            <strong>💬 Respuestas:</strong> Automáticas
-                          </Text>
-                          <Text as="p">
-                            <strong>⚡ Estado:</strong> <Badge tone="success">Conectado</Badge>
-                          </Text>
-                          <Text as="p">
-                            <strong>💰 Costo:</strong> ${assignedNumber.monthlyCost}/mes
+                            <strong>Asignado:</strong> {new Date(data.assignedNumber.assignedAt).toLocaleDateString('es-PE')}
                           </Text>
                         </BlockStack>
                       </Layout.Section>
                     </Layout>
-                  </div>
+                  </BlockStack>
+
+                  {/* Link Único para esta Tienda */}
+                  {uniqueLink && (
+                    <>
+                      <Divider />
+                      <BlockStack gap="300">
+                        <Text variant="headingSm" as="h3">
+                          🔗 Link Único de tu Tienda
+                        </Text>
+                        
+                        <Banner tone="success" title="¡Tu link personalizado está listo!">
+                          <BlockStack gap="200">
+                            <Text as="p">
+                              Comparte este link único para que los clientes contacten directamente a <strong>{data.shop.storeName}</strong>:
+                            </Text>
+                            
+                            <Card background="bg-surface-secondary">
+                              <Text as="p" variant="bodyMd" fontWeight="medium">
+                                {uniqueLink}
+                              </Text>
+                            </Card>
+                            
+                            <InlineStack gap="200">
+                              <Button
+                                onClick={() => navigator.clipboard.writeText(uniqueLink)}
+                              >
+                                📋 Copiar Link
+                              </Button>
+                              <Button
+                                url={uniqueLink}
+                                target="_blank"
+                                variant="plain"
+                              >
+                                🧪 Probar Link
+                              </Button>
+                            </InlineStack>
+                          </BlockStack>
+                        </Banner>
+
+                        <Text as="p" tone="subdued">
+                          💡 <strong>Cómo usar:</strong> Cuando un cliente haga clic en este link, 
+                          automáticamente será dirigido a tu tienda específica con el agente IA 
+                          configurado para {data.shop.storeName}.
+                        </Text>
+                      </BlockStack>
+                    </>
+                  )}
                 </BlockStack>
-
-                <Divider />
-
+              </Card>
+            ) : (
+              // ❌ MOSTRAR OPCIÓN PARA ACTIVAR WHATSAPP
+              <Card>
+                <BlockStack gap="400">
+                  <InlineStack gap="200" align="start">
+                    <Text variant="headingMd" as="h2">
+                      🚀 Activa WhatsApp Business para {data.shop.storeName}
+                    </Text>
+                  </InlineStack>
+                </BlockStack>
+                
                 <BlockStack gap="300">
-                  <Text variant="headingSm" as="h3">
-                    🚀 ¿Qué puedes hacer ahora?
+                  <Text as="p">
+                    Obtén un <strong>número</strong> y brinda atención automática 
+                    a tus clientes las 24 horas del día con inteligencia artificial.
                   </Text>
-                  
-                  <InlineStack gap="200" wrap>
-                    <Button
-                      icon={ExternalIcon}
-                      url={`https://wa.me/${assignedNumber.phoneNumber.replace("+", "")}`}
-                      external
-                      target="_blank"
-                    >
-                      Abrir WhatsApp Web
-                    </Button>
-                    <Button
-                      icon={ChatIcon}
-                      url={`https://wa.me/${assignedNumber.phoneNumber.replace("+", "")}?text=Hola,%20este%20es%20un%20mensaje%20de%20prueba%20desde%20mi%20tienda`}
-                      external
-                      target="_blank"
-                    >
-                      Enviar Mensaje de Prueba
-                    </Button>
-                  </InlineStack>
 
-                  <Text as="p" tone="subdued">
-                    💡 <strong>Tip:</strong> Comparte este número con tus clientes para que puedan hacer pedidos y consultas por WhatsApp. 
-                    El agente de IA responderá automáticamente las 24 horas del día.
-                  </Text>
+                  {/* Estado del servicio */}
+                  {canActivateWhatsApp && (
+                    <Banner tone="success" title="🟢 Servicio Disponible">
+                      <Text as="p">
+                        Tu tienda <strong>{data.shop.storeName}</strong> está elegible para 
+                        WhatsApp Business. Al activar obtendrás un link único.
+                      </Text>
+                    </Banner>
+                  )}
+                  {!canActivateWhatsApp && (
+                    <Banner tone="warning" title="🔒 Plan requerido">
+                      <p>
+                        Tu tienda <strong>{data.shop.storeName}</strong> necesita actualizar a un plan{" "}
+                        <strong>BASIC</strong> o superior para acceder a WhatsApp Business con IA.
+                      </p>
+                    </Banner>
+                  )}
+
+                  <BlockStack gap="200">
+                    <Text variant="headingSm" as="h4">
+                      ✨ Qué obtendrás al activar
+                    </Text>
+                    <InlineStack gap="100" wrap>
+                      <Badge>🤖 Agente IA personalizado</Badge>
+                      <Badge>⚡ Respuestas automáticas 24/7</Badge>
+                      <Badge>🛍️ Gestión de pedidos COD</Badge>
+                    </InlineStack>
+                  </BlockStack>
+
+                  <BlockStack gap="200">
+                    <Text variant="headingSm" as="h4">
+                      🎯 Perfecto para tu tienda:
+                    </Text>
+                    <Text as="p" tone="subdued">
+                      • Recibir consultas específicas de productos de <strong>{data.shop.storeName}</strong><br/>
+                      • Gestionar pedidos con la identidad de tu marca<br/>
+                      • Link único para marketing<br/>
+                      • Agente IA entrenado con el catálogo de tu tienda
+                    </Text>
+                  </BlockStack>
                 </BlockStack>
-              </BlockStack>
-            </Card>
-          ) : (
-            // Mostrar opción para activar WhatsApp
-            <CalloutCard
-              title="🚀 ¡Activa WhatsApp Business con IA para tu tienda!"
-              illustration="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-              primaryAction={{
-                content: isAssigning ? "Activando..." : "Activar WhatsApp",
-                onAction: isAssigning ? undefined : handleAssignNumber,
-              }}
-            >
-              <BlockStack gap="300">
-                <Text as="p">
-                  Obtén un <strong>número temporal de WhatsApp</strong> para que tus clientes 
-                  puedan contactarte directamente. Incluye un agente de inteligencia artificial 
-                  que responderá automáticamente a sus consultas las 24 horas del día.
-                </Text>
-
-                <BlockStack gap="200">
-                  <Text variant="headingSm" as="h4">
-                    ✨ ¿Qué incluye tu número temporal?
-                  </Text>
-                  <InlineStack gap="100" wrap>
-                    <Badge tone="info">🤖 Agente IA 24/7</Badge>
-                    <Badge tone="info">📱 Número dedicado</Badge>
-                    <Badge tone="info">⚡ Respuestas automáticas</Badge>
-                    <Badge tone="info">🛍️ Gestión de pedidos</Badge>
-                  </InlineStack>
-                </BlockStack>
-
-                <BlockStack gap="200">
-                  <Text variant="headingSm" as="h4">
-                    🎯 Perfecto para:
-                  </Text>
-                  <Text as="p" tone="subdued">
-                    • Recibir consultas de productos<br/>
-                    • Gestionar pedidos automáticamente<br/>
-                    • Brindar soporte al cliente 24/7<br/>
-                    • Aumentar tus ventas por WhatsApp<br/>
-                    • Mejorar la experiencia del cliente
-                  </Text>
-                </BlockStack>
-
-                {canAssignNumber && (
-                  <Text as="p" tone="success">
-                    📈 <strong>Disponibles:</strong> {statistics.availableNumbers} números listos para asignar
-                  </Text>
-                )}
-
-                {!canAssignNumber && (
-                  <Banner tone="warning" title="🔒 Plan requerido">
-                    <p>
-                      Necesitas actualizar a un plan <strong>BASIC</strong> o superior 
-                      para acceder a WhatsApp Business con IA.
-                    </p>
-                  </Banner>
-                )}
-              </BlockStack>
-            </CalloutCard>
-          )}
-
-          {/* Información adicional */}
-          <Card>
-            <BlockStack gap="300">
-              <Text variant="headingSm" as="h3">
-                📋 Información Importante
-              </Text>
-              
-              <div style={{ width: "100%" }}>
-                <Layout>
-                  <Layout.Section>
-                    <BlockStack gap="200">
-                      <Text variant="bodyMd" as="h4">
-                        🔄 Número Temporal
-                      </Text>
-                      <Text as="p" tone="subdued">
-                        El número asignado es temporal y compartido inteligentemente 
-                        entre múltiples tiendas. Nuestro sistema detecta automáticamente 
-                        de qué tienda proviene cada mensaje.
-                      </Text>
-                    </BlockStack>
-                  </Layout.Section>
-
-                  <Layout.Section>
-                    <BlockStack gap="200">
-                      <Text variant="bodyMd" as="h4">
-                        🔮 Próximas Actualizaciones
-                      </Text>
-                      <Text as="p" tone="subdued">
-                        En nuestra próxima actualización podrás asociar tu propio 
-                        número de WhatsApp Business para tener control total sobre 
-                        tu canal de comunicación.
-                      </Text>
-                    </BlockStack>
-                  </Layout.Section>
-                </Layout>
-              </div>
-
-              <Divider />
-
-              <BlockStack gap="200">
-                <Text variant="bodyMd" as="h4">
-                  ⚙️ Tecnología Utilizada
-                </Text>
-                <InlineStack gap="100" wrap>
-                  <Badge>WhatsApp Business API</Badge>
-                  <Badge>OpenAI Integration</Badge>
-                  <Badge>Shopify Sync</Badge>
-                  <Badge>Automation Engine</Badge>
-                </InlineStack>
-              </BlockStack>
-            </BlockStack>
-          </Card>
+              </Card>
+            )}
+          </BlockStack>
         </Layout.Section>
       </Layout>
 
       {/* Modal de Confirmación para Liberar Número */}
       <Modal
-        open={showReleaseModal}
-        onClose={() => setShowReleaseModal(false)}
-        title="¿Liberar número de WhatsApp?"
+        open={showDeactivateModal}
+        onClose={() => setShowDeactivateModal(false)}
+        title={`¿Liberar número WhatsApp de ${data.shop.storeName}?`}
         primaryAction={{
-          content: "Liberar Número",
-          onAction: handleReleaseNumber,
+          content: isDeactivating ? "Liberando..." : "Liberar Número",
+          onAction: handleDeactivateWhatsApp,
           destructive: true,
+          loading: isDeactivating,
         }}
         secondaryActions={[
           {
             content: "Cancelar",
-            onAction: () => setShowReleaseModal(false),
+            onAction: () => setShowDeactivateModal(false),
+            disabled: isDeactivating,
           },
         ]}
       >
         <Modal.Section>
           <BlockStack gap="300">
             <Text as="p">
-              ¿Estás seguro de que quieres liberar el número{" "}
-              <strong>{assignedNumber?.phoneNumber}</strong>?
+              ¿Estás seguro de que quieres liberar el número WhatsApp{" "}
+              <strong>{data.assignedNumber?.phoneNumber || ""}</strong> asignado a{" "}
+              <strong>{data.shop.storeName}</strong>?
             </Text>
 
-            <Banner tone="warning" title="⚠️ Importante">
+            <Banner tone="critical" title="⚠️ Esta acción liberará:">
               <BlockStack gap="100">
-                <Text as="p">• Perderás acceso a este número inmediatamente</Text>
-                <Text as="p">• Los clientes no podrán contactarte por WhatsApp</Text>
-                <Text as="p">• El agente de IA se desactivará</Text>
-                <Text as="p">• El número volverá al pool disponible</Text>
-                <Text as="p">• Puedes obtener un nuevo número más tarde</Text>
+                <Text as="p">• El número WhatsApp asignado a {data.shop.storeName}</Text>
+                <Text as="p">• El agente de IA se desactivará para esta tienda</Text>
+                <Text as="p">• El link único dejará de funcionar</Text>
+                <Text as="p">• Los clientes no podrán contactar a esta tienda por WhatsApp</Text>
               </BlockStack>
             </Banner>
 
             <Text as="p" tone="subdued">
-              Esta acción no se puede deshacer, pero puedes obtener un nuevo
-              número cuando quieras.
+              El número estará disponible para ser asignado a otra tienda. Podrás obtener 
+              un nuevo número más tarde, pero perderás la configuración actual de{" "}
+              <strong>{data.shop.storeName}</strong>.
             </Text>
           </BlockStack>
         </Modal.Section>
       </Modal>
-
-      {/* Loading Overlay */}
-      {fetcher.state === "submitting" && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.3)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-        >
-          <Card>
-            <div style={{ padding: "20px", textAlign: "center" }}>
-              <Spinner size="large" />
-              <Text variant="headingSm" as="p">
-                Procesando...
-              </Text>
-            </div>
-          </Card>
-        </div>
-      )}
     </Page>
   );
 }

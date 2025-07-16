@@ -5,16 +5,15 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
-// enough when changing adapters.
-// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
+// =====================
 // ENUMS
+// =====================
 enum SubscriptionPlan {
   FREE
   BASIC
@@ -49,15 +48,23 @@ enum CallStatus {
   FAILED
 }
 
-// NUEVOS ENUMS PARA TWILIO
-enum TwilioNumberStatus {
-  AVAILABLE    // Número comprado pero no asignado
-  ASSIGNED     // Asignado a una tienda
-  SUSPENDED    // Temporalmente suspendido
-  CANCELLED    // Cancelado/liberado
+enum WhatsAppNumberStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  MAINTENANCE
 }
 
+enum WhatsAppSessionStatus {
+  ACTIVE
+  EXPIRED
+  CLOSED
+}
+
+// =====================
 // MODELS
+// =====================
+
 model Session {
   id            String    @id
   shop          String
@@ -83,20 +90,14 @@ model Shop {
   subscription_plan     SubscriptionPlan?      @default(BASIC)
   created_at            DateTime               @default(now())
   updated_at            DateTime               @updatedAt
-  
-  // Relaciones existentes
+
+  // Relaciones
   chatbot_configuration ChatbotConfiguration?
   tickets               Ticket[]
-  
-  // Nuevas relaciones simplificadas
   order_confirmations   OrderConfirmation[]
-  
-  // NUEVAS RELACIONES WHATSAPP/TWILIO
-  whatsapp_configuration_2 WhatsAppConfiguration?
-  twilio_number          TwilioNumber?
-
-  // AGREGAR ESTA LÍNEA:
-  vonage_configuration VonageConfiguration?
+  vonage_configuration  VonageConfiguration?
+  whatsAppNumbers       WhatsAppNumber[]       @relation("ShopToWhatsAppNumbers")
+  whatsAppSessions      WhatsAppSession[]      @relation("ShopToWhatsAppSessions")
 }
 
 model ChatbotConfiguration {
@@ -106,13 +107,8 @@ model ChatbotConfiguration {
   welcome_message String   @default("Hola! Estoy aquí para ayudarte.")
   webhook_url     String?
   is_active       Boolean  @default(true)
-
-  // 🆕 NUEVAS COLUMNAS PARA PERSONALIZACIÓN
   personality     String?  @default("Chatbot amigable que usa emojis y responde de manera casual")
-
-  // 🆕 CAMPOS REQUERIDOS (JSON para flexibilidad)
   required_fields Json?    @default("{\"nombre\": true, \"numero\": false, \"correo\": true, \"direccion\": false, \"ciudad\": false, \"provincia\": false, \"pais\": false}")
-
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
@@ -135,46 +131,33 @@ model Ticket {
   assigned_at    DateTime?
   resolved_at    DateTime?
   closed_at      DateTime?
-
-  customerName   String?      // Nombre del cliente
-  customerPhone  String?      // Número de teléfono del cliente
-  shopDomain     String?      // Dominio de la tienda
+  customerName   String?
+  customerPhone  String?
+  shopDomain     String?
 
   shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
 }
 
-
 model OrderConfirmation {
   id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   shop_id               String                  @db.Uuid
-  
-  // Datos básicos del pedido
-  internal_order_number String                  // Número interno antes de Shopify
-  shopify_order_id      String?                 // Se asigna después de confirmar
-  shopify_order_name    String? 
+  internal_order_number String
+  shopify_order_id      String?
+  shopify_order_name    String?
   customer_phone        String
   customer_name         String?
   customer_email        String?
-  
-  // Datos del pedido
-  order_items           Json                    // Items del pedido
+  order_items           Json
   order_total           Decimal                 @db.Decimal(10, 2)
   shipping_address      Json?
-  
-  // Estado y origen
-  source                OrderSource             // CHATBOT_STORE o WHATSAPP
+  source                OrderSource
   status                OrderConfirmationStatus @default(PENDING_CALL)
-
-  // ✅ AGREGAR CAMPOS DE VONAGE
-  vonage_call_uuid      String?                 // UUID de la llamada en Vonage
-  dtmf_response         String?                 // Respuesta DTMF del cliente
-  
-  // Fechas importantes
-  call_scheduled_at     DateTime?               // Cuándo se programó la llamada
+  vonage_call_uuid      String?
+  dtmf_response         String?
+  call_scheduled_at     DateTime?
   confirmed_at          DateTime?
   declined_at           DateTime?
   expires_at            DateTime?
-  
   created_at            DateTime                @default(now())
   updated_at            DateTime                @updatedAt
 
@@ -186,90 +169,68 @@ model OrderConfirmation {
   @@index([shopify_order_name])
 }
 
-// NUEVAS TABLAS WHATSAPP/TWILIO
+model WhatsAppNumber {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  phone_number         String
+  display_name         String?
+  business_account_id  String?
+  webhook_url          String?
+  webhook_token        String?
+  status               WhatsAppNumberStatus @default(ACTIVE)
+  default_shop_id      String?              @db.Uuid
+  detection_rules      Json?
+  country_code         String               @default("BR")
+  provider             String               @default("whatsapp_business")
+  created_at           DateTime             @default(now())
+  updated_at           DateTime             @updatedAt
 
-model WhatsAppConfiguration {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  shop_id         String   @unique @db.Uuid
-
-  // Configuración básica
-  enabled         Boolean  @default(true)
-  welcome_message String   @default("¡Hola! ¿En qué puedo ayudarte?")
-
-  // Configuración opcional
-  business_hours  Json?    // {"open": "09:00", "close": "18:00"}
-  auto_responses  Json?    // Respuestas automáticas
-
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
-
-  // Relación
-  shop            Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
-}
-
-model TwilioNumber {
-  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-
-  // Datos del número en Twilio
-  phone_number    String            @unique // "+15551234567"
-  twilio_sid      String            @unique // Identificador único en Twilio
-  friendly_name   String?           // Nombre amigable en Twilio
-
-  // Configuración del webhook
-  webhook_url     String?           // URL del webhook de N8N
-
-  // Estado del número
-  status          TwilioNumberStatus @default(AVAILABLE)
-
-  // Asignación a tienda (nullable)
-  shop_id         String?           @unique @db.Uuid // Solo una tienda por número
-  assigned_at     DateTime?         // Cuándo se asignó
-
-  // Costos y facturación
-  monthly_cost    Decimal           @db.Decimal(8, 2) // Costo mensual en USD
-  purchased_at    DateTime          @default(now())
-  next_billing    DateTime?         // Próxima fecha de facturación
-
-  // Metadatos
-  country_code    String            @default("US") // País del número
-  number_type     String            @default("local") // "local", "toll-free", "mobile"
-  capabilities    Json?             // {"sms": true, "voice": true, "mms": true}
-
-  created_at      DateTime          @default(now())
-  updated_at      DateTime          @updatedAt
-
-  // Relación opcional con tienda
-  shop            Shop?             @relation(fields: [shop_id], references: [id], onDelete: SetNull)
+  shop Shop? @relation("ShopToWhatsAppNumbers", fields: [default_shop_id], references: [id])
+  whatsAppSessions WhatsAppSession[] @relation("WhatsAppNumberToSessions")
 
   @@index([status])
-  @@index([shop_id])
   @@index([phone_number])
 }
 
 model VonageConfiguration {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  shop_id         String   @unique @db.Uuid
-  
-  // Credenciales de Vonage
-  application_id  String   // Application ID de Vonage
-  private_key     String   // Private Key para JWT
-  phone_number    String   // Número virtual para llamadas
-  webhook_base_url String  // Base URL para webhooks
-  
-  // Configuración adicional
-  voice_language  String   @default("es-ES")
-  voice_style     Int      @default(0)
-  call_timeout    Int      @default(30)
-  dtmf_timeout    Int      @default(15)
-  
-  // Estado
-  is_active       Boolean  @default(true)
-  last_used_at    DateTime?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
-  
-  // Relación
-  shop            Shop     @relation(fields: [shop_id], references: [id], onDelete: Cascade)
-  
-  @@map("VonageConfiguration")
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shop_id          String   @unique @db.Uuid
+  application_id   String
+  private_key      String
+  phone_number     String
+  webhook_base_url String
+  voice_language   String   @default("es-ES")
+  voice_style      Int      @default(0)
+  call_timeout     Int      @default(30)
+  dtmf_timeout     Int      @default(15)
+  is_active        Boolean  @default(true)
+  last_used_at     DateTime?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+}
+
+model WhatsAppSession {
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  session_id           String                @unique
+  phone_number         String                // Número del cliente
+  whatsapp_number_id   String                @db.Uuid // Número de WhatsApp de negocio
+  shop_id              String                @db.Uuid
+  detection_method     String                // 'start_code', 'history', 'keyword', 'default'
+  confidence           String                // 'high', 'medium', 'low'
+  conversation_context Json?                 // Historial y contexto
+  customer_intent      String?               // 'pricing', 'availability', 'purchase', etc.
+  status               WhatsAppSessionStatus @default(ACTIVE)
+  created_at           DateTime              @default(now())
+  last_message_at      DateTime              @default(now())
+  expires_at           DateTime              // Expiración automática (24h)
+  message_count        Int                   @default(1)
+  last_bot_response    String?
+  shop                 Shop                  @relation("ShopToWhatsAppSessions", fields: [shop_id], references: [id], onDelete: Cascade)
+  whatsapp_number      WhatsAppNumber        @relation("WhatsAppNumberToSessions", fields: [whatsapp_number_id], references: [id], onDelete: Cascade)
+  @@index([phone_number])
+  @@index([session_id])
+  @@index([last_message_at])
+  @@index([expires_at])
+  @@index([status])
 }
