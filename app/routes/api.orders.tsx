@@ -94,50 +94,80 @@ function cleanPrice(price: string): number {
   return isNaN(numericPrice) ? 0 : numericPrice;
 }
 
-// ✅ NUEVA: FUNCIÓN PARA VERIFICAR VARIANT
 async function verifyVariantExists(
   shopDomain: string,
   accessToken: string,
   variantId: string,
 ): Promise<{ exists: boolean; price?: number; title?: string }> {
   try {
-    logger.info("Verificando variant_id en Shopify", { variantId, shopDomain });
+    logger.info("Verificando variant_id en Shopify (GraphQL)", { variantId, shopDomain });
+
+    // Si el ID no es un GID, construirlo
+    let gid = variantId;
+    if (!variantId.startsWith("gid://")) {
+      gid = `gid://shopify/ProductVariant/${variantId}`;
+    }
+
+    const graphqlQuery = `#graphql\n\
+      query getVariant($id: ID!) {\n\
+        productVariant(id: $id) {\n\
+          id\n\
+          title\n\
+          price\n\
+          availableForSale\n\
+        }\n\
+      }\n\
+    `;
 
     const response = await fetch(
-      `https://${shopDomain}/admin/api/2025-04/variants/${variantId}.json`,
+      `https://${shopDomain}/admin/api/2025-04/graphql.json`,
       {
+        method: "POST",
         headers: {
+          "Content-Type": "application/json",
           "X-Shopify-Access-Token": accessToken,
-          "X-Request-ID": `variant-check-${Date.now()}`,
+          "X-Request-ID": `variant-check-graphql-${Date.now()}`,
         },
+        body: JSON.stringify({
+          query: graphqlQuery,
+          variables: { id: gid },
+        }),
       },
     );
 
-    if (response.ok) {
-      const data = await response.json();
-      const variant = data.variant;
-
-      logger.info("Variant encontrado en Shopify", {
-        variantId,
-        title: variant.title,
-        price: variant.price,
-        available: variant.available,
-      });
-
-      return {
-        exists: true,
-        price: parseFloat(variant.price),
-        title: variant.title,
-      };
-    } else {
-      logger.warn("Variant no encontrado en Shopify", {
+    if (!response.ok) {
+      logger.warn("Respuesta no OK de Shopify GraphQL", {
         variantId,
         status: response.status,
+        statusText: response.statusText,
       });
       return { exists: false };
     }
+
+    const data = await response.json();
+    if (data.errors || !data.data || !data.data.productVariant) {
+      logger.warn("Variant no encontrado en Shopify (GraphQL)", {
+        variantId,
+        errors: data.errors,
+      });
+      return { exists: false };
+    }
+
+    const variant = data.data.productVariant;
+    logger.info("Variant encontrado en Shopify (GraphQL)", {
+      variantId,
+      title: variant.title,
+      price: variant.price,
+      available: variant.availableForSale,
+    });
+
+    return {
+      exists: true,
+      price: parseFloat(variant.price),
+      title: variant.title,
+    };
   } catch (error) {
-    logger.error("Error verificando variant", {
+    logger.error("Error verificando variant (GraphQL)", {
       variantId,
       error: error instanceof Error ? error.message : "Unknown error",
     });

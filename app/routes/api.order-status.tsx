@@ -189,7 +189,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 node {
                   id
                   name
-                  phone
                   email
                   createdAt
                   displayFinancialStatus
@@ -203,7 +202,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                   customer {
                     firstName
                     lastName
-                    phone
+                    defaultPhoneNumber {
+                      phoneNumber
+                    }
                   }
                   lineItems(first: 5) {
                     edges {

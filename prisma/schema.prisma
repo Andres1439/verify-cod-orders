@@ -11,9 +11,6 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// =====================
-// ENUMS
-// =====================
 enum SubscriptionPlan {
   FREE
   BASIC
@@ -55,15 +52,12 @@ enum WhatsAppNumberStatus {
   MAINTENANCE
 }
 
-enum WhatsAppSessionStatus {
-  ACTIVE
-  EXPIRED
-  CLOSED
+enum WhatsAppNumberAssignmentStatus {
+  AVAILABLE    // Disponible para asignar
+  ASSIGNED     // Asignado a una tienda
+  RESERVED     // Reservado temporalmente
+  MAINTENANCE  // En mantenimiento
 }
-
-// =====================
-// MODELS
-// =====================
 
 model Session {
   id            String    @id
@@ -97,7 +91,6 @@ model Shop {
   order_confirmations   OrderConfirmation[]
   vonage_configuration  VonageConfiguration?
   whatsAppNumbers       WhatsAppNumber[]       @relation("ShopToWhatsAppNumbers")
-  whatsAppSessions      WhatsAppSession[]      @relation("ShopToWhatsAppSessions")
 }
 
 model ChatbotConfiguration {
@@ -107,8 +100,8 @@ model ChatbotConfiguration {
   welcome_message String   @default("Hola! Estoy aquí para ayudarte.")
   webhook_url     String?
   is_active       Boolean  @default(true)
-  personality     String?  @default("Chatbot amigable que usa emojis y responde de manera casual")
-  required_fields Json?    @default("{\"nombre\": true, \"numero\": false, \"correo\": true, \"direccion\": false, \"ciudad\": false, \"provincia\": false, \"pais\": false}")
+  personality     String?  @default("Chatbot amigable y conciso")
+  required_fields Json?    @default("{\"nombre\": false, \"numero\": true, \"correo\": true, \"direccion\": false, \"ciudad\": false, \"provincia\": false, \"pais\": false}")
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
@@ -171,13 +164,15 @@ model OrderConfirmation {
 
 model WhatsAppNumber {
   id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  phone_number         String
+  phone_number         String               @unique
   display_name         String?
-  business_account_id  String?
+  business_account_id  String?              @unique
   webhook_url          String?
   webhook_token        String?
   status               WhatsAppNumberStatus @default(ACTIVE)
+  assignment_status    WhatsAppNumberAssignmentStatus @default(AVAILABLE)
   default_shop_id      String?              @db.Uuid
+  assigned_at          DateTime?
   detection_rules      Json?
   country_code         String               @default("BR")
   provider             String               @default("whatsapp_business")
@@ -185,10 +180,11 @@ model WhatsAppNumber {
   updated_at           DateTime             @updatedAt
 
   shop Shop? @relation("ShopToWhatsAppNumbers", fields: [default_shop_id], references: [id])
-  whatsAppSessions WhatsAppSession[] @relation("WhatsAppNumberToSessions")
 
   @@index([status])
   @@index([phone_number])
+  @@index([business_account_id])
+  @@index([assignment_status])  // ← NUEVO índice
 }
 
 model VonageConfiguration {
@@ -210,27 +206,3 @@ model VonageConfiguration {
   shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
 }
 
-model WhatsAppSession {
-  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  session_id           String                @unique
-  phone_number         String                // Número del cliente
-  whatsapp_number_id   String                @db.Uuid // Número de WhatsApp de negocio
-  shop_id              String                @db.Uuid
-  detection_method     String                // 'start_code', 'history', 'keyword', 'default'
-  confidence           String                // 'high', 'medium', 'low'
-  conversation_context Json?                 // Historial y contexto
-  customer_intent      String?               // 'pricing', 'availability', 'purchase', etc.
-  status               WhatsAppSessionStatus @default(ACTIVE)
-  created_at           DateTime              @default(now())
-  last_message_at      DateTime              @default(now())
-  expires_at           DateTime              // Expiración automática (24h)
-  message_count        Int                   @default(1)
-  last_bot_response    String?
-  shop                 Shop                  @relation("ShopToWhatsAppSessions", fields: [shop_id], references: [id], onDelete: Cascade)
-  whatsapp_number      WhatsAppNumber        @relation("WhatsAppNumberToSessions", fields: [whatsapp_number_id], references: [id], onDelete: Cascade)
-  @@index([phone_number])
-  @@index([session_id])
-  @@index([last_message_at])
-  @@index([expires_at])
-  @@index([status])
-}
