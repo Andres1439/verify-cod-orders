@@ -154,6 +154,10 @@ model OrderConfirmation {
   created_at            DateTime                @default(now())
   updated_at            DateTime                @updatedAt
 
+  shop_country_code     String?
+  shop_currency         String?
+  shop_timezone         String?
+  
   shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
 
   @@unique([internal_order_number, shop_id])

@@ -34,7 +34,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Preparar configuración con valores por defecto
     const defaultRequiredFields = {
       nombre: true,
-      numero: false,
+      numero: true,
       correo: true,
       direccion: false,
       ciudad: false,
@@ -173,7 +173,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           "Chatbot amigable que usa emojis y responde de manera casual",
         required_fields: processedRequiredFields || {
           nombre: true,
-          numero: false,
+          numero: true,
           correo: true,
           direccion: false,
           ciudad: false,

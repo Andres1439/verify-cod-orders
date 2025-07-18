@@ -111,7 +111,7 @@ export const loader = async ({ request }: { request: Request }) => {
   // Configuración por defecto con tipos seguros
   const defaultRequiredFields = {
     nombre: true,
-    numero: true, // ✅ SIEMPRE TRUE POR DEFECTO
+    numero: true,
     correo: true,
     direccion: false,
     ciudad: false,

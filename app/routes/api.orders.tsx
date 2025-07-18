@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-// app/routes/api.orders.tsx - VERSIÓN COMPLETA - SOLO DATOS REALES DEL CLIENTE
+// app/routes/api.orders.tsx - VERSIÓN CORREGIDA - VALIDACIÓN DE TELÉFONO LOCAL
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
@@ -297,47 +297,69 @@ function cleanInvalidEmail(email: string): string {
   return cleanEmail;
 }
 
-// ✅ VALIDACIÓN DE DATOS MÍNIMOS
-function validateMinimalOrderData(data: any) {
+// ✅ NUEVA: VALIDACIÓN DE TELÉFONO LOCAL (SIN CÓDIGO DE PAÍS)
+function validateLocalPhone(phone: string, countryCode: string): boolean {
+  const phoneClean = phone.replace(/[\s\-\+]/g, "");
+
+  if (!/^\d+$/.test(phoneClean)) {
+    return false;
+  }
+
+  // Validar formatos locales por país
+  const localPatterns: Record<string, RegExp> = {
+    'PE': /^9\d{8}$/,      // Perú: 9 + 8 dígitos
+    'CO': /^3\d{9}$/,      // Colombia: 3 + 9 dígitos  
+    'MX': /^\d{10}$/,      // México: 10 dígitos
+    'AR': /^9\d{9}$/,      // Argentina: 9 + 9 dígitos
+    'CL': /^9\d{8}$/,      // Chile: 9 + 8 dígitos
+  };
+
+  const pattern = localPatterns[countryCode];
+  return pattern ? pattern.test(phoneClean) : phoneClean.length >= 8;
+}
+
+// ✅ ANTIGUA: VALIDACIÓN DE TELÉFONO CON CÓDIGO DE PAÍS (MANTENER PARA USAR DESPUÉS)
+function validatePhoneWithCountryCode(phone: string): boolean {
+  const phoneClean = phone.replace(/[\s\-\+]/g, "");
+
+  if (!/^\d+$/.test(phoneClean)) {
+    return false;
+  }
+
+  // Validar códigos de país específicos más estrictos
+  const validPatterns = [
+    /^51[9]\d{8}$/,    // Perú: 51 + 9 + 8 dígitos
+    /^57[3]\d{9}$/,    // Colombia: 57 + 3 + 9 dígitos  
+    /^52\d{10}$/,      // México: 52 + 10 dígitos
+    /^54[9]\d{9}$/,    // Argentina: 54 + 9 + 9 dígitos
+    /^56[9]\d{8}$/,    // Chile: 56 + 9 + 8 dígitos
+  ];
+
+  return validPatterns.some(pattern => pattern.test(phoneClean));
+}
+
+// ✅ CORREGIDA: VALIDACIÓN DE DATOS MÍNIMOS (USA TELÉFONO LOCAL)
+function validateMinimalOrderData(data: any, countryCode: string) {
   const errors: string[] = [];
 
   if (!data.phone || data.phone.trim() === "") {
     errors.push("Número de teléfono es requerido");
   }
 
-  if (data.phone) {
-    const phoneClean = data.phone.replace(/[\s\-\+]/g, "");
-
-    if (!/^\d+$/.test(phoneClean)) {
-      errors.push("Número de teléfono debe contener solo números");
-    } else {
-      let isValidFormat = false;
-
-      if (phoneClean.startsWith("51") && phoneClean.length === 11) {
-        const localNumber = phoneClean.substring(2);
-        if (localNumber.startsWith("9") && localNumber.length === 9) {
-          isValidFormat = true;
-        }
-      } else if (phoneClean.startsWith("57") && phoneClean.length === 12) {
-        const localNumber = phoneClean.substring(2);
-        if (localNumber.startsWith("3") && localNumber.length === 10) {
-          isValidFormat = true;
-        }
-      } else if (phoneClean.startsWith("52") && phoneClean.length === 12) {
-        const localNumber = phoneClean.substring(2);
-        if (localNumber.length === 10) {
-          isValidFormat = true;
-        }
-      } else if (phoneClean.length >= 10 && phoneClean.length <= 15) {
-        isValidFormat = true;
-      }
-
-      if (!isValidFormat) {
-        errors.push(
-          "Formato de teléfono inválido. Ejemplos válidos: 51987654321 (Perú), 573001234567 (Colombia), 525551234567 (México)",
-        );
-      }
-    }
+  // ✅ CAMBIO: Validar teléfono local, no con código de país
+  if (data.phone && !validateLocalPhone(data.phone, countryCode)) {
+    const examples: Record<string, string> = {
+      'PE': '987654321 (9 dígitos empezando en 9)',
+      'CO': '3001234567 (10 dígitos empezando en 3)',
+      'MX': '5551234567 (10 dígitos)',
+      'AR': '911234567 (9 dígitos empezando en 9)',
+      'CL': '987654321 (9 dígitos empezando en 9)'
+    };
+    
+    const example = examples[countryCode] || '987654321';
+    errors.push(
+      `Formato de teléfono inválido para ${countryCode}. Ejemplo válido: ${example}`
+    );
   }
 
   if (!data.product_name || data.product_name.trim() === "") {
@@ -405,12 +427,13 @@ function isFieldRequired(fieldName: string, requiredFields: any): boolean {
   return false;
 }
 
-async function getShopCurrency(
+// ✅ NUEVA FUNCIÓN: OBTENER INFORMACIÓN COMPLETA DE LA TIENDA (REEMPLAZA getShopCurrency)
+async function getShopInfoWithCountry(
   shopDomain: string,
   accessToken: string,
-): Promise<string> {
+): Promise<{ currency: string; countryCode: string; timezone: string }> {
   try {
-    logger.info("Obteniendo moneda de la tienda", { shopDomain });
+    logger.info("Obteniendo información completa de la tienda", { shopDomain });
 
     const query = `
       query {
@@ -418,6 +441,13 @@ async function getShopCurrency(
           currencyCode
           name
           countryCode
+          timezone
+          ianaTimezone
+          address {
+            countryCode
+            country
+            city
+          }
         }
       }
     `;
@@ -429,7 +459,7 @@ async function getShopCurrency(
         headers: {
           "Content-Type": "application/json",
           "X-Shopify-Access-Token": accessToken,
-          "X-Request-ID": `currency-${Date.now()}-${Math.random()}`,
+          "X-Request-ID": `shop-info-${Date.now()}-${Math.random()}`,
         },
         body: JSON.stringify({ query }),
       },
@@ -449,28 +479,33 @@ async function getShopCurrency(
 
     const shop = result.data.shop;
     const currency = shop.currencyCode || "USD";
+    const countryCode = shop.countryCode || shop.address?.countryCode || "PE";
+    const timezone = shop.ianaTimezone || shop.timezone || "America/Lima";
 
-    logger.info("Información de la tienda obtenida", {
+    logger.info("Información completa de la tienda obtenida", {
       shopDomain,
       currency,
-      country: shop.countryCode,
-      name: shop.name,
+      countryCode,
+      timezone,
+      shopName: shop.name,
+      address: shop.address,
     });
 
-    return currency;
+    return { currency, countryCode, timezone };
   } catch (error) {
-    logger.error("Error obteniendo moneda de la tienda", {
+    logger.error("Error obteniendo información de la tienda", {
       shopDomain,
       error: error instanceof Error ? error.message : "Unknown error",
     });
 
+    // ✅ FALLBACK: Usar REST API
     try {
       const restResponse = await fetch(
         `https://${shopDomain}/admin/api/2025-04/shop.json`,
         {
           headers: {
             "X-Shopify-Access-Token": accessToken,
-            "X-Request-ID": `currency-fallback-${Date.now()}`,
+            "X-Request-ID": `shop-fallback-${Date.now()}`,
           },
         },
       );
@@ -478,27 +513,80 @@ async function getShopCurrency(
       if (restResponse.ok) {
         const restResult = await restResponse.json();
         const fallbackCurrency = restResult.shop?.currency || "USD";
-        logger.info("Fallback REST API - Moneda obtenida", {
+        const fallbackCountry = restResult.shop?.country_code || "PE";
+        const fallbackTimezone = restResult.shop?.iana_timezone || "America/Lima";
+        
+        logger.info("Fallback REST API - Información obtenida", {
           shopDomain,
           currency: fallbackCurrency,
+          countryCode: fallbackCountry,
+          timezone: fallbackTimezone,
         });
-        return fallbackCurrency;
+        
+        return { 
+          currency: fallbackCurrency, 
+          countryCode: fallbackCountry,
+          timezone: fallbackTimezone 
+        };
       }
     } catch (fallbackError) {
       logger.error("Fallback también falló", {
         shopDomain,
-        error:
-          fallbackError instanceof Error
-            ? fallbackError.message
-            : "Unknown error",
+        error: fallbackError instanceof Error ? fallbackError.message : "Unknown error",
       });
     }
 
-    return "USD";
+    // ✅ DEFAULT SEGURO
+    return { currency: "USD", countryCode: "PE", timezone: "America/Lima" };
   }
 }
 
-// ✅ MODIFICADA: createShopifyOrder con price explícito
+// ✅ NUEVA FUNCIÓN: AGREGAR CÓDIGO DE PAÍS AL TELÉFONO
+function addCountryCodeToPhone(phone: string, countryCode: string): string {
+  // Limpiar teléfono
+  const cleanPhone = phone.replace(/[^0-9]/g, "");
+  
+  // Mapeo de códigos de país a códigos telefónicos
+  const phoneCountryCodes: Record<string, string> = {
+    'PE': '51',  // Perú
+    'CO': '57',  // Colombia
+    'MX': '52',  // México
+    'US': '1',   // Estados Unidos
+    'CA': '1',   // Canadá
+    'AR': '54',  // Argentina
+    'CL': '56',  // Chile
+    'BR': '55',  // Brasil
+    'EC': '593', // Ecuador
+    'VE': '58',  // Venezuela
+    'ES': '34',  // España
+    'UY': '598', // Uruguay
+    'PY': '595', // Paraguay
+    'BO': '591', // Bolivia
+    // Agregar más según necesidades
+  };
+
+  const phoneCountryCode = phoneCountryCodes[countryCode] || '51'; // Default Perú
+
+  // Si el teléfono ya tiene código de país, no agregarlo
+  if (cleanPhone.startsWith(phoneCountryCode)) {
+    return cleanPhone;
+  }
+
+  // Si el teléfono empieza con 9 (típico de móviles peruanos), agregar código
+  if (countryCode === 'PE' && cleanPhone.startsWith('9') && cleanPhone.length === 9) {
+    return `51${cleanPhone}`;
+  }
+  
+  // Si el teléfono empieza con 3 (típico de móviles colombianos), agregar código
+  if (countryCode === 'CO' && cleanPhone.startsWith('3') && cleanPhone.length === 10) {
+    return `57${cleanPhone}`;
+  }
+
+  // Para otros casos, agregar código de país
+  return `${phoneCountryCode}${cleanPhone}`;
+}
+
+// ✅ MODIFICADA: createShopifyOrder con price explícito y usar shopInfo
 async function createShopifyOrder({
   shopDomain,
   accessToken,
@@ -520,7 +608,6 @@ async function createShopifyOrder({
       timestamp: Date.now(),
     });
 
-    const shopCurrency = await getShopCurrency(shopDomain, accessToken);
     const uniqueNote = "chatbot";
 
     const orderData = {
@@ -553,7 +640,7 @@ async function createShopifyOrder({
             },
           ],
         })),
-        currency: shopCurrency,
+        currency: currency, // ✅ USAR CURRENCY PASADO COMO PARÁMETRO
         financial_status: "pending",
         fulfillment_status: "unfulfilled",
         tags: "chatbot",
@@ -569,6 +656,7 @@ async function createShopifyOrder({
       note: orderData.order.note,
       tags: orderData.order.tags,
       address: orderData.order.shipping_address.address1,
+      currency: orderData.order.currency,
     });
 
     const response = await fetch(
@@ -646,7 +734,7 @@ async function createShopifyOrder({
   }
 }
 
-// ✅ FUNCIÓN PRINCIPAL MODIFICADA CON SOLO DATOS REALES
+// ✅ FUNCIÓN PRINCIPAL CORREGIDA - CAMBIO DE ORDEN EN VALIDACIONES
 export const action = async ({ request }: ActionFunctionArgs) => {
   const headers = new Headers();
   headers.append("Access-Control-Allow-Origin", "*");
@@ -738,34 +826,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    const basicErrors = validateMinimalOrderData(body);
-    const securityErrors = validateNoDefaultValues(body);
-
-    const allErrors = [...basicErrors, ...securityErrors];
-
-    if (allErrors.length > 0) {
-      logger.error("Validación de seguridad falló:", {
-        errors: allErrors,
-        requestId,
-        receivedData: {
-          phone: body.phone,
-          product_name: body.product_name,
-          variant_id: body.variant_id,
-          price: body.price,
-          quantity: body.quantity,
-        },
-      });
-
-      return json(
-        {
-          error: "Datos insuficientes para crear la orden",
-          details: allErrors,
-          code: "SECURITY_VALIDATION_FAILED",
-        },
-        { status: 400, headers },
-      );
-    }
-
     const shop = await db.shop.findUnique({
       where: { shop_domain: shopDomain },
       select: {
@@ -789,6 +849,76 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         { status: 400, headers },
       );
     }
+
+    let realAccessToken = shop.access_token;
+    try {
+      const parsed = JSON.parse(shop.access_token);
+      if (parsed.encrypted && parsed.iv && parsed.tag) {
+        realAccessToken = decryptToken(parsed);
+      }
+    } catch (e) {}
+
+    // ✅ 1. PRIMERO: OBTENER INFORMACIÓN DE LA TIENDA (INCLUYE PAÍS)
+    const shopInfo = await getShopInfoWithCountry(shop.shop_domain, realAccessToken);
+    const { currency, countryCode, timezone } = shopInfo;
+
+    logger.info("Información de la tienda obtenida", {
+      requestId,
+      countryCode,
+      currency,
+      timezone,
+    });
+
+    // ✅ 2. SEGUNDO: VALIDAR CON TELÉFONO LOCAL (AHORA QUE TENEMOS EL PAÍS)
+    const basicErrors = validateMinimalOrderData(body, countryCode);
+    const securityErrors = validateNoDefaultValues(body);
+
+    const allErrors = [...basicErrors, ...securityErrors];
+
+    if (allErrors.length > 0) {
+      logger.error("Validación de seguridad falló:", {
+        errors: allErrors,
+        requestId,
+        countryCode: countryCode,
+        receivedData: {
+          phone: body.phone,
+          product_name: body.product_name,
+          variant_id: body.variant_id,
+          price: body.price,
+          quantity: body.quantity,
+        },
+      });
+
+      return json(
+        {
+          error: "Datos insuficientes para crear la orden",
+          details: allErrors,
+          code: "SECURITY_VALIDATION_FAILED",
+        },
+        { status: 400, headers },
+      );
+    }
+
+    // ✅ 3. TERCERO: AGREGAR CÓDIGO DE PAÍS AL TELÉFONO (DESPUÉS DE VALIDAR)
+    const phoneWithCountryCode = addCountryCodeToPhone(phone, countryCode);
+
+    // ✅ 4. CUARTO: VALIDAR QUE EL TELÉFONO CON CÓDIGO SEA CORRECTO (OPCIONAL)
+    if (!validatePhoneWithCountryCode(phoneWithCountryCode)) {
+      logger.warn("Teléfono con código de país no válido después de procesar", {
+        originalPhone: phone,
+        phoneWithCountryCode: phoneWithCountryCode,
+        countryCode: countryCode,
+        requestId,
+      });
+      // No retornar error aquí, solo log de warning
+    }
+
+    logger.info("Teléfono procesado correctamente", {
+      requestId,
+      originalPhone: phone,
+      phoneWithCountryCode: phoneWithCountryCode,
+      countryCode: countryCode,
+    });
 
     // ✅ OBTENER CONFIGURACIÓN DE CAMPOS OBLIGATORIOS
     const shopConfig = await db.chatbotConfiguration.findUnique({
@@ -876,30 +1006,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const hasRealCountry = !!cleanCountry && !!country;
     const hasRealZip = !!cleanZip && !!zip;
 
-    // ✅ PREPARAR DATOS PARA SHOPIFY - SOLO DATOS REALES O MÍNIMOS TÉCNICOS
+    // ✅ PREPARAR DATOS PARA SHOPIFY - USAR CAMPOS VACÍOS SI NO HAY DATOS
     const customerData: ShopifyCustomerData = {
-      firstName: finalFirstName || "Cliente", // Shopify requiere algo, usar mínimo
-      lastName: finalLastName, // Puede estar vacío
-      email: finalEmail || generateTechnicalEmail(phone, shopDomain), // Shopify requiere email
-      phone: phone,
+      firstName: finalFirstName || "", // ✅ VACÍO si no se proporcionó
+      lastName: finalLastName || "",   // ✅ VACÍO si no se proporcionó
+      email: finalEmail || generateTechnicalEmail(phoneWithCountryCode, shopDomain), // Email técnico solo si necesario
+      phone: phoneWithCountryCode,
     };
 
-    // ✅ DIRECCIÓN: Solo datos reales - NO valores por defecto
+    // ✅ DIRECCIÓN: USAR CAMPOS VACÍOS O MÍNIMOS REQUERIDOS POR SHOPIFY
     const shippingAddress: ShopifyShippingAddress = {
-      firstName: finalFirstName || "Cliente", // Shopify requiere algo
-      lastName: finalLastName, // Puede estar vacío
-      address1: cleanAddress1 || "Dirección no proporcionada", // Shopify requiere algo
-      city: cleanCity || "Ciudad no proporcionada", // Shopify requiere algo
-      province: cleanProvince, // Puede estar vacío
-      country: cleanCountry || "PE", // Shopify requiere algo, usar mínimo
-      zip: cleanZip, // Puede estar vacío
-      phone: phone,
+      firstName: finalFirstName || "", // ✅ VACÍO si no se proporcionó
+      lastName: finalLastName || "",   // ✅ VACÍO si no se proporcionó
+      address1: cleanAddress1 || "",   // ✅ VACÍO si no se proporcionó
+      city: cleanCity || "",           // ✅ VACÍO si no se proporcionó
+      province: cleanProvince || "",   // ✅ VACÍO si no se proporcionó
+      country: cleanCountry || countryCode, // ✅ Usar país de la tienda como fallback
+      zip: cleanZip || "",             // ✅ VACÍO si no se proporcionó
+      phone: phoneWithCountryCode,
     };
 
     const lineItems: DBLineItem[] = [
       {
         title: product_name,
-        price: itemPrice.toString(), // ✅ USAR PRECIO LIMPIO
+        price: itemPrice.toString(),
         quantity: itemQuantity,
         variantId: variant_id,
         requiresShipping: true,
@@ -908,14 +1038,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     ];
 
     logger.info("Iniciando creación de orden en Shopify...", { requestId });
-
-    let realAccessToken = shop.access_token;
-    try {
-      const parsed = JSON.parse(shop.access_token);
-      if (parsed.encrypted && parsed.iv && parsed.tag) {
-        realAccessToken = decryptToken(parsed);
-      }
-    } catch (e) {}
 
     // ✅ VERIFICAR VARIANT ANTES DE CREAR ORDEN
     const variantCheck = await verifyVariantExists(
@@ -993,7 +1115,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           ],
         },
       ],
-      currency: "USD",
+      currency: currency, // ✅ USAR MONEDA DE LA TIENDA
       note: "chatbot",
       itemPrice: finalPrice, // ✅ USAR PRECIO VERIFICADO
       requestId: requestId,
@@ -1023,28 +1145,35 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const shopifyOrderId = String(shopifyResult.order.id);
     const shopifyOrderName = shopifyResult.order.name;
 
-    // ✅ CREAR ORDEN EN BASE DE DATOS CON DATOS REALES ÚNICAMENTE
+    // ✅ CREAR ORDEN EN BASE DE DATOS CON DATOS REALES Y INFORMACIÓN DE LA TIENDA
     const orderConfirmation = await db.orderConfirmation.create({
       data: {
         shop_id: shop.id,
         internal_order_number: internalOrderNumber,
         shopify_order_id: shopifyOrderId,
         shopify_order_name: shopifyOrderName,
-        customer_phone: phone,
+        
+        // ✅ USAR TELÉFONO CON CÓDIGO DE PAÍS
+        customer_phone: phoneWithCountryCode,
+        
+        // ✅ AGREGAR NUEVOS CAMPOS DE INFORMACIÓN DE LA TIENDA
+        shop_country_code: countryCode,
+        shop_currency: currency,
+        shop_timezone: timezone,
 
-        // ✅ SOLO GUARDAR DATOS REALES
+        // ✅ SOLO GUARDAR DATOS REALES - CAMPOS VACÍOS SI NO SE PROPORCIONARON
         customer_name: hasRealFirstName
           ? hasRealLastName
             ? `${finalFirstName} ${finalLastName}`.trim()
             : finalFirstName
-          : "", // VACÍO si no se proporcionó
+          : "", // ✅ VACÍO si no se proporcionó
 
-        customer_email: hasRealEmail ? finalEmail : "", // VACÍO si no se proporcionó
+        customer_email: hasRealEmail ? finalEmail : "", // ✅ VACÍO si no se proporcionó
 
         order_items: lineItems as any,
         order_total: orderTotal,
 
-        // ✅ DIRECCIÓN CON DATOS REALES ÚNICAMENTE
+        // ✅ DIRECCIÓN CON DATOS REALES ÚNICAMENTE - CAMPOS VACÍOS
         shipping_address: {
           firstName: hasRealFirstName ? finalFirstName : "",
           lastName: hasRealLastName ? finalLastName : "",
@@ -1053,7 +1182,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           province: hasRealProvince ? cleanProvince : "",
           country: hasRealCountry ? cleanCountry : "",
           zip: hasRealZip ? cleanZip : "",
-          phone: phone,
+          phone: phoneWithCountryCode,
           realDataOnly: {
             firstName: hasRealFirstName,
             lastName: hasRealLastName,
@@ -1079,7 +1208,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       shopify_order_id: shopifyOrderId,
       shopify_order_name: shopifyOrderName,
       status: orderConfirmation.status,
-      phone: phone,
+      originalPhone: phone,
+      phoneWithCountryCode: phoneWithCountryCode,
+      countryCode: countryCode,
+      currency: currency,
+      timezone: timezone,
       real_data_only: {
         has_real_firstName: hasRealFirstName,
         has_real_lastName: hasRealLastName,
@@ -1093,10 +1226,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       customer_name_saved: orderConfirmation.customer_name,
       customer_email_saved: orderConfirmation.customer_email,
       shopify_success: true,
-      currency: shopifyResult.order.currency,
     });
 
-    // ✅ RESPUESTA CLARA - SOLO MOSTRAR DATOS REALES
+    // ✅ RESPUESTA CLARA - SOLO MOSTRAR DATOS REALES + INFORMACIÓN DE LA TIENDA
     return json(
       {
         success: true,
@@ -1147,11 +1279,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           needsCompletion: !hasRealAddress || !hasRealCity,
         },
 
+        // ✅ AGREGAR INFORMACIÓN DEL PAÍS Y TIENDA
+        shopInfo: {
+          countryCode: countryCode,
+          currency: currency,
+          timezone: timezone,
+          phoneWithCountryCode: phoneWithCountryCode,
+          originalPhone: phone,
+          autoDetectedCountry: true,
+        },
+
         items: [
           {
             title: product_name,
             quantity: itemQuantity,
-            price: finalPrice.toString(), // ✅ USAR PRECIO FINAL
+            price: finalPrice.toString(),
             variantId: variant_id,
           },
         ],
@@ -1185,6 +1327,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           used_real_data_only: true,
           no_fake_data: true,
           no_automatic_generation: true,
+          empty_fields_instead_of_defaults: true,
+          shop_info: {
+            countryCode: countryCode,
+            currency: currency,
+            timezone: timezone,
+            phone_processing: {
+              original: phone,
+              withCountryCode: phoneWithCountryCode,
+              detectedCountry: countryCode,
+            },
+          },
           price_info: {
             original_price: price,
             cleaned_price: itemPrice,
