@@ -158,12 +158,19 @@ model OrderConfirmation {
   shop_currency         String?
   shop_timezone         String?
   
+  // Campos de tracking de llamadas
+  call_status           CallStatus?             @default(PENDING)
+  call_started_at       DateTime?
+  last_event_at         DateTime?
+  
   shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
 
   @@unique([internal_order_number, shop_id])
   @@index([status])
   @@index([call_scheduled_at])
   @@index([shopify_order_name])
+  @@index([call_status])
+  @@index([vonage_call_uuid])
 }
 
 model WhatsAppNumber {
