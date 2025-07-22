@@ -1,6 +1,9 @@
 // app/routes/app.chatbot.tsx (COMPLETO CON NÚMEROS DE TICKETS REALES)
-import type { ActionFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { useState, useEffect } from "react";
+import { useActionData, useLoaderData, useSubmit, useNavigation } from "@remix-run/react";
+import { getTicketNumber } from "../utils/ticket-utils";
 import { TitleBar } from "@shopify/app-bridge-react";
 import {
   Page,
@@ -31,23 +34,11 @@ import {
   PersonIcon,
   SettingsIcon,
 } from "@shopify/polaris-icons";
-import { json } from "@remix-run/node";
-import {
-  useLoaderData,
-  useNavigation,
-  useSubmit,
-  useActionData,
-} from "@remix-run/react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { logger } from "../utils/logger.server";
 
-// 🎯 FUNCIÓN HELPER PARA NÚMEROS DE TICKET
-const getTicketNumber = (ticketId: string): string => {
-  if (!ticketId) return "TICKET-INVALID";
-  const shortId = ticketId.split("-")[0];
-  return `TICKET-${shortId.toUpperCase()}`;
-};
+// 🎯 FUNCIÓN HELPER IMPORTADA DESDE UTILS
 
 const getShortTicketId = (ticketId: string): string => {
   if (!ticketId) return "INVALID";
@@ -80,8 +71,9 @@ export const loader = async ({ request }: { request: Request }) => {
         welcome_message: "",
         personality: "",
         required_fields: {
-          nombre: true,
-          numero: false,
+          // ✅ Consistente con schema.prisma default
+          nombre: false,  // Cambiado de true a false para coincidir con schema
+          numero: true,   // Cambiado de false a true para coincidir con schema
           correo: true,
           direccion: false,
           ciudad: false,
@@ -387,8 +379,8 @@ export default function ChatbotPage() {
     welcome_message: chatbotConfig.welcome_message || "",
     personality: chatbotConfig.personality || "",
     required_fields: chatbotConfig.required_fields || {
-      nombre: true,
-      numero: true, // ✅ INTERNO - NO VISIBLE EN UI
+      nombre: false,
+      numero: true,
       correo: true,
       direccion: false,
       ciudad: false,
@@ -418,7 +410,7 @@ export default function ChatbotPage() {
 
   // Función de guardado actualizada
   const handleSaveConfig = () => {
-    console.log("💾 Enviando configuración:", config);
+
 
     const formData = new FormData();
     formData.append("action", "updateChatbotConfig");

@@ -18,7 +18,7 @@
       '{{ shop.domain }}',
     ].filter((domain, index, self) => domain && self.indexOf(domain) === index);
 
-    const baseUrl = "https://ensures-operated-stevens-arctic.trycloudflare.com/api/chatbot-config";
+    const baseUrl = "https://cod-orders.fly.dev/api/chatbot-config";
     
     for (const domain of domainVariations) {
       try {
@@ -71,7 +71,7 @@
 
       // Crear chatbot
       createChat({
-        webhookUrl: window.N8N_WEBHOOK_URL || "https://opencuenta82.app.n8n.cloud/webhook/afc49feb-3869-4849-9ccc-41d6909933a6/chat",
+        webhookUrl: window.N8N_WEBHOOK_URL || "https://n8n-wabm.onrender.com/webhook/afc49feb-3869-4849-9ccc-41d6909933a6/chat",
         initialMessages: [config.welcome_message],
         metadata: {
           shopDomain: shopDomain

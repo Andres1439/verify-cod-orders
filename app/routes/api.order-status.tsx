@@ -4,6 +4,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
+import { decimalToString, decimalToCurrency } from "../utils/decimal-utils";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const headers = new Headers();
@@ -15,12 +16,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const shopDomain = url.searchParams.get("shop");
     const orderNumber = url.searchParams.get("orderNumber");
     const customerPhone = url.searchParams.get("customerPhone");
-
-    console.log("[API Order Status] 🔍 Consulta recibida:", {
-      shopDomain,
-      orderNumber,
-      customerPhone: customerPhone ? "***" + customerPhone.slice(-4) : null,
-    });
 
     // 🎯 VALIDACIÓN BÁSICA
     if (!shopDomain || !orderNumber || !customerPhone) {
@@ -48,7 +43,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
 
     if (!shop) {
-      console.error("[API Order Status] ❌ Tienda no encontrada:", shopDomain);
       return json(
         {
           error: "Tienda no encontrada",
@@ -57,11 +51,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         { status: 404, headers },
       );
     }
-
-    console.log("[API Order Status] ✅ Tienda encontrada:", {
-      shopId: shop.id,
-      domain: shop.shop_domain,
-    });
 
     // 🎯 PREPARAR PATRONES DE BÚSQUEDA DE TELÉFONO
     const originalPhone = customerPhone;
@@ -77,14 +66,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       cleanPhone.replace(/^52/, ""), // sin código México
     ].filter((pattern, index, self) => self.indexOf(pattern) === index); // Únicos
 
-    console.log("[API Order Status] 📱 Patrones de teléfono:", {
-      original: originalPhone,
-      totalPatterns: phonePatterns.length,
-      samplePatterns: phonePatterns.slice(0, 3),
-    });
-
     // 🔍 BUSCAR EN BASE DE DATOS INTERNA
-    console.log("[API Order Status] 🔍 Buscando en base de datos interna...");
+
 
     const internalOrders = await db.orderConfirmation.findMany({
       where: {
@@ -120,11 +103,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       take: 5, // Máximo 5 resultados
     });
 
-    console.log("[API Order Status] 📋 Resultados de búsqueda:", {
-      totalFound: internalOrders.length,
-      orderIds: internalOrders.map((o) => o.id),
-      orderNumbers: internalOrders.map((o) => o.internal_order_number),
-    });
+
 
     // 🎯 FILTRAR POR TELÉFONO SI HAY MÚLTIPLES RESULTADOS
     let matchingOrders = internalOrders;
@@ -147,10 +126,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         });
       });
 
-      console.log("[API Order Status] 📱 Después de filtrar por teléfono:", {
-        before: internalOrders.length,
-        after: matchingOrders.length,
-      });
+
     }
 
     // 🎯 SELECCIONAR LA MEJOR COINCIDENCIA
@@ -165,12 +141,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             order.internal_order_number === `#${orderNumber}`,
         ) || matchingOrders[0]; // Si no hay coincidencia exacta, tomar la primera
 
-      console.log("[API Order Status] ✅ Orden seleccionada:", {
-        id: selectedOrder.id,
-        internalNumber: selectedOrder.internal_order_number,
-        phone: selectedOrder.customer_phone,
-        status: selectedOrder.status,
-      });
+
     }
 
     // 🎯 INTENTAR SHOPIFY SOLO SI NO ENCONTRAMOS NADA Y HAY TOKEN
@@ -178,7 +149,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     let shopifyError = null;
 
     if (!selectedOrder && shop.access_token) {
-      console.log("[API Order Status] 🔗 Intentando búsqueda en Shopify...");
+
       shopifyAttempted = true;
 
       try {
@@ -260,7 +231,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             );
 
             if (phoneMatch) {
-              console.log("[API Order Status] ✅ Orden encontrada en Shopify");
+
               return json(
                 {
                   success: true,
@@ -280,14 +251,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
       } catch (error) {
         shopifyError = "connection_error";
-        console.log("[API Order Status] ⚠️ Error Shopify:", error);
+
       }
     }
 
     // 🎯 RESPONDER SEGÚN LO ENCONTRADO
     if (selectedOrder) {
       // ✅ ORDEN ENCONTRADA EN BD INTERNA
-      console.log("[API Order Status] ✅ Respondiendo con orden interna");
+
 
       return json(
         {
@@ -307,7 +278,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       );
     } else {
       // ❌ NO ENCONTRADA
-      console.log("[API Order Status] ❌ Orden no encontrada");
+
 
       const suggestions = [
         "Verifica que el número de orden sea correcto (ej: 1042, #1042)",
@@ -367,9 +338,8 @@ function formatInternalOrder(order: any, requestedOrderNumber: string) {
     id: order.shopify_order_id || "DRAFT",
     orderNumber: order.internal_order_number || `#${requestedOrderNumber}`,
     status: {
-      payment: "PENDING_PAYMENT",
-      fulfillment: "UNFULFILLED",
-      internal: order.status,
+      // Solo usar estados reales del enum OrderConfirmationStatus
+      internal: order.status, // Estado real del enum: PENDING_CALL | CONFIRMED | DECLINED | NO_ANSWER | EXPIRED
       description: getInternalStatusDescription(order.status),
       statusColor: getStatusColor(order.status),
     },
@@ -379,9 +349,9 @@ function formatInternalOrder(order: any, requestedOrderNumber: string) {
       phone: order.customer_phone,
     },
     total: {
-      amount: order.order_total?.toString() || "0",
+      amount: decimalToString(order.order_total),
       currency: "USD",
-      formatted: `$${order.order_total || 0} USD`,
+      formatted: decimalToCurrency(order.order_total),
     },
     items: formatOrderItems(order.order_items, order.order_total),
     shippingAddress: order.shipping_address || {},
@@ -408,7 +378,7 @@ function formatShopifyOrder(order: any) {
     orderNumber: order.name,
     status: {
       payment: order.displayFinancialStatus || "PENDING",
-      fulfillment: order.displayFulfillmentStatus || "UNFULFILLED",
+      // Usar solo estados reales - removido fulfillment inventado
       description: `${order.displayFinancialStatus} | ${order.displayFulfillmentStatus}`,
       statusColor: "blue",
     },
@@ -447,7 +417,7 @@ function formatOrderItems(items: any, fallbackTotal?: number): any[] {
       {
         title: "Producto",
         quantity: 1,
-        price: fallbackTotal?.toString() || "0",
+        price: decimalToString(fallbackTotal),
         currency: "USD",
       },
     ];
@@ -464,7 +434,7 @@ function formatOrderItems(items: any, fallbackTotal?: number): any[] {
         {
           title: items,
           quantity: 1,
-          price: fallbackTotal?.toString() || "0",
+          price: decimalToString(fallbackTotal),
           currency: "USD",
         },
       ];

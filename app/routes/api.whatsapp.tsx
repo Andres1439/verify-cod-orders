@@ -29,7 +29,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 // ===== FUNCIÓN PRINCIPAL DE DETECCIÓN =====
 async function detectShopByPhoneNumber(phoneNumberId: string) {
   try {
-    console.log(`[WHATSAPP] 📱 Detectando tienda para phoneNumberId: ${phoneNumberId}`);
+
     
     const whatsappNumber = await db.whatsAppNumber.findFirst({
       where: { 
@@ -47,7 +47,7 @@ async function detectShopByPhoneNumber(phoneNumberId: string) {
     });
 
     if (!whatsappNumber || !whatsappNumber.shop) {
-      console.log(`[WHATSAPP] ❌ No encontrado phoneNumberId: ${phoneNumberId}`);
+
       
       // Debug: Mostrar números disponibles
       const availableNumbers = await db.whatsAppNumber.findMany({
@@ -71,7 +71,7 @@ async function detectShopByPhoneNumber(phoneNumberId: string) {
     }
 
     const shop = whatsappNumber.shop;
-    console.log(`[WHATSAPP] ✅ Tienda encontrada: ${shop.shop_domain}`);
+
 
     // Respuesta para N8N
     return json({
@@ -275,7 +275,7 @@ export async function action({ request }: ActionFunctionArgs) {
           }
         });
 
-        console.log(`[WHATSAPP] ✅ Número ${assignedNumber.phone_number} asignado a ${shop.shop_domain}`);
+
 
         return json({
           success: true,
@@ -316,7 +316,7 @@ export async function action({ request }: ActionFunctionArgs) {
           }
         });
 
-        console.log(`[WHATSAPP] ♻️ Número ${assignedNumber.phone_number} liberado de ${shop.shop_domain}`);
+
 
         return json({
           success: true,

@@ -2,22 +2,11 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
+import { authenticate } from "../shopify.server";
+import { extractNumericId } from "../utils/common-utils";
 import { decryptToken } from "../utils/encryption.server";
 
-// ✅ FUNCIÓN CRÍTICA: Extraer solo el número del ID GraphQL
-function extractNumericId(graphqlId: string): string {
-  if (!graphqlId) return "";
-
-  // Si es un ID GraphQL (gid://shopify/ProductVariant/44787807060156)
-  if (graphqlId.includes("gid://shopify/")) {
-    const parts = graphqlId.split("/");
-    const numericId = parts[parts.length - 1];
-    return numericId || graphqlId;
-  }
-
-  // Si ya es un número, devolverlo tal como está
-  return graphqlId;
-}
+// ✅ FUNCIÓN IMPORTADA DESDE UTILS COMPARTIDAS
 
 // Tipos TypeScript basados en Shopify GraphQL 2025-04
 interface ProductVariant {
@@ -144,7 +133,7 @@ interface FormattedProduct {
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  console.log("--- [API Products] Iniciando consulta ---");
+
 
   // Headers CORS estándar
   const headers = new Headers();
@@ -169,13 +158,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const sortKey = url.searchParams.get("sortKey") || "UPDATED_AT";
     const reverse = url.searchParams.get("reverse") === "true";
 
-    console.log(`[API Products] Parámetros:`, {
-      shopDomain,
-      search: search || "búsqueda general",
-      first,
-      sortKey,
-      reverse,
-    });
+
 
     // Validación requerida
     if (!shopDomain) {
@@ -221,7 +204,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       // Token no está cifrado, usar tal como viene
     }
 
-    console.log(`[API Products] Tienda autorizada: ${shop.shop_domain}`);
+
 
     // Query GraphQL estándar Shopify 2025-04
     const graphqlQuery = `#graphql
@@ -314,9 +297,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     }
 
-    console.log(
-      `[API Products] Query Shopify: ${shopifyQuery || "catálogo completo"}`,
-    );
+
 
     // Petición a Shopify Admin API
     const adminApiUrl = `https://${shopDomain}/admin/api/2025-04/graphql.json`;
@@ -361,9 +342,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
 
     const rawProducts = data.data.products.edges;
-    console.log(
-      `[API Products] Productos encontrados en Shopify: ${rawProducts.length}`,
-    );
 
     // ✅ PROCESAMIENTO CORREGIDO: Extraer IDs numéricos
     const productsWithStock: FormattedProduct[] = rawProducts
@@ -397,16 +375,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
         // Usar la primera variante disponible como principal
         const primaryVariant = availableVariants[0];
-
-        // ✅ LOG PARA VERIFICAR EXTRACCIÓN DE IDs
-        console.log(`[API Products] Procesando producto:`, {
-          original_product_id: node.id,
-          extracted_product_id: extractNumericId(node.id),
-          original_variant_id: primaryVariant.id,
-          extracted_variant_id: extractNumericId(primaryVariant.id),
-          product_name: node.title,
-          price: primaryVariant.price,
-        });
 
         return {
           // ✅ IDs CRÍTICOS: Solo números puros
@@ -477,21 +445,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           product !== null,
       );
 
-    // ✅ LOG FINAL para verificar el primer producto
-    if (productsWithStock.length > 0) {
-      const firstProduct = productsWithStock[0];
-      console.log(`[API Products] Primer producto procesado:`, {
-        variant_id: firstProduct.variant_id,
-        product_name: firstProduct.product_name,
-        price: firstProduct.price,
-        inventory_quantity: firstProduct.inventory_quantity,
-        is_variant_id_numeric: /^\d+$/.test(firstProduct.variant_id),
-        is_product_name_string:
-          typeof firstProduct.product_name === "string" &&
-          !firstProduct.product_name.includes("gid://"),
-      });
-    }
-
     const result = {
       success: true,
       products: productsWithStock,
@@ -514,9 +467,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }),
     };
 
-    console.log(
-      `[API Products] Respuesta final: ${productsWithStock.length} productos con stock`,
-    );
+
     return json(result, { headers });
   } catch (error) {
     console.error("[API Products] Error:", error);

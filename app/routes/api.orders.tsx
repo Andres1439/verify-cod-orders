@@ -3,6 +3,9 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
+import { authenticate } from "../shopify.server";
+import { decimalToString } from "../utils/decimal-utils";
+import { cleanPrice, generateTechnicalEmail, cleanTextField } from "../utils/common-utils";
 import { logger } from "../utils/logger.server";
 import { decryptToken } from "../utils/encryption.server";
 import { RateLimiter } from "../utils/rate-limiter.server";
@@ -81,18 +84,7 @@ interface CreateShopifyOrderParams {
   requestId: string;
 }
 
-// ✅ NUEVA: FUNCIÓN PARA LIMPIAR PRECIO
-function cleanPrice(price: string): number {
-  if (!price) return 0;
-
-  // Remover moneda y caracteres no numéricos, excepto puntos y comas
-  const cleanedPrice = price
-    .replace(/[^\d.,]/g, "") // Remover todo excepto dígitos, puntos y comas
-    .replace(",", "."); // Convertir comas a puntos para decimales
-
-  const numericPrice = parseFloat(cleanedPrice);
-  return isNaN(numericPrice) ? 0 : numericPrice;
-}
+// ✅ FUNCIÓN IMPORTADA DESDE UTILS COMPARTIDAS
 
 async function verifyVariantExists(
   shopDomain: string,
@@ -175,60 +167,7 @@ async function verifyVariantExists(
   }
 }
 
-// ✅ FUNCIÓN PARA GENERAR EMAIL TEMPORAL SOLO PARA SHOPIFY (TÉCNICO)
-function generateTechnicalEmail(phone: string, shopDomain: string): string {
-  const cleanPhone = phone.replace(/[^0-9]/g, "");
-  const shopName = shopDomain.split(".")[0];
-  return `${cleanPhone}@temp.${shopName}.customer`;
-}
-
-// ✅ FUNCIÓN PARA LIMPIAR CAMPOS DE TEXTO
-function cleanTextField(value: string): string {
-  if (!value || value.trim() === "") {
-    return "";
-  }
-
-  const cleanValue = value.trim().toLowerCase();
-
-  const invalidPhrases = [
-    "no brindo información",
-    "no brindo informacion",
-    "nobrindoinformación",
-    "nobrindoinformacion",
-    "no doy información",
-    "no doy informacion",
-    "no proporciono",
-    "no tengo",
-    "no quiero",
-    "no deseo",
-    "prefiero no dar",
-    "prefiero no",
-    "no dar",
-    "sin información",
-    "sin informacion",
-    "ninguno",
-    "n/a",
-    "na",
-    "no",
-    "nada",
-    "no disponible",
-    "no aplica",
-    "no hay",
-    "sin datos",
-    "vacio",
-    "vacío",
-  ];
-
-  const hasInvalidPhrase = invalidPhrases.some((phrase) =>
-    cleanValue.includes(phrase),
-  );
-
-  if (hasInvalidPhrase) {
-    return "";
-  }
-
-  return value.trim();
-}
+// ✅ FUNCIÓN IMPORTADA DESDE UTILS COMPARTIDAS
 
 // ✅ FUNCIÓN PARA VALIDAR Y LIMPIAR EMAILS
 function cleanInvalidEmail(email: string): string {
@@ -627,7 +566,7 @@ async function createShopifyOrder({
         line_items: lineItems.map((item) => ({
           variant_id: item.variantId,
           quantity: item.quantity,
-          price: itemPrice.toString(), // ✅ PRECIO EXPLÍCITO AGREGADO
+          price: decimalToString(itemPrice), // ✅ PRECIO EXPLÍCITO con helper
           custom_attributes: [
             ...item.customAttributes,
             {
@@ -1240,7 +1179,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         orderConfirmation: {
           id: orderConfirmation.id,
           status: orderConfirmation.status,
-          total: orderConfirmation.order_total.toString(),
+          total: decimalToString(orderConfirmation.order_total),
           currency: shopifyResult.order.currency,
           shopifyOrderName: shopifyOrderName,
           expiresAt: orderConfirmation.expires_at,
@@ -1293,7 +1232,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           {
             title: product_name,
             quantity: itemQuantity,
-            price: finalPrice.toString(),
+            price: decimalToString(finalPrice),
             variantId: variant_id,
           },
         ],

@@ -1,6 +1,7 @@
 // app/routes/api.vonage-calls.tsx
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
+import { formatPhoneNumber } from "../utils/common-utils";
 import db from "../db.server";
 import crypto from "crypto";
 
@@ -55,40 +56,6 @@ function generateVonageJWT(): string {
     console.error('❌ Error generando JWT:', error);
     throw new Error('Failed to generate Vonage JWT');
   }
-}
-
-// 📱 Formatear número de teléfono
-function formatPhoneNumber(phone: string, country: string = 'PE'): string {
-  // Limpiar número
-  const cleanPhone = phone.toString().replace(/[\s\+\-\(\)\.\#\*]/g, '');
-  
-  // Códigos de país
-  const countryCodes: Record<string, string> = {
-    'PE': '51', 'CO': '57', 'MX': '52', 'CL': '56',
-    'AR': '54', 'EC': '593', 'BO': '591', 'PY': '595'
-  };
-  
-  const countryCode = countryCodes[country] || '51';
-  
-  let formattedPhone = '';
-  
-  if (cleanPhone.startsWith(countryCode)) {
-    formattedPhone = cleanPhone;
-  } else if (cleanPhone.startsWith('00' + countryCode)) {
-    formattedPhone = cleanPhone.substring(2);
-  } else if (cleanPhone.startsWith('0')) {
-    formattedPhone = countryCode + cleanPhone.substring(1);
-  } else if (cleanPhone.length >= 8) {
-    formattedPhone = countryCode + cleanPhone;
-  } else {
-    throw new Error(`Invalid phone number: ${phone}`);
-  }
-  
-  if (formattedPhone.length < 10 || formattedPhone.length > 15) {
-    throw new Error(`Invalid phone length: ${formattedPhone}`);
-  }
-  
-  return formattedPhone;
 }
 
 // 🎵 Generar NCCO para la llamada
