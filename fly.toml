@@ -1,0 +1,31 @@
+# fly.toml app configuration file generated for cod-orders on 2025-07-22T04:57:56-05:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'cod-orders'
+primary_region = 'bog'
+
+[build]
+
+[deploy]
+  release_command = 'npx prisma migrate deploy'
+
+[env]
+  PORT = '3000'
+  SCOPES = 'read_customers,read_inventory,read_orders,read_products,write_customers,write_orders'
+  SHOPIFY_API_KEY = '41005ee4ea0dade72d57a6c0fd641b45'
+  SHOPIFY_APP_URL = 'https://cod-orders.fly.dev'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1

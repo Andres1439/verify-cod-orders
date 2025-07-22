@@ -3,7 +3,7 @@
 client_id = "41005ee4ea0dade72d57a6c0fd641b45"
 name = "Verify COD Orders"
 handle = "verify-cod-orders-4"
-application_url = "https://observer-logistics-lemon-theories.trycloudflare.com"
+application_url = "https://appliances-generic-establishing-weddings.trycloudflare.com"
 embedded = true
 
 [build]
@@ -19,18 +19,18 @@ api_version = "2025-04"
 
   [[webhooks.subscriptions]]
   topics = [ "app/scopes_update" ]
-  uri = "/webhooks/app/scopes_update"
+  uri = "https://cod-orders.fly.dev/webhooks/app/scopes_update"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
-  uri = "/webhooks/app/uninstalled"
+  uri = "https://cod-orders.fly.dev/webhooks/app/uninstalled"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_customers,read_inventory,read_orders,read_products,write_customers,write_orders"
 
 [auth]
-redirect_urls = ["https://observer-logistics-lemon-theories.trycloudflare.com/auth/callback", "https://observer-logistics-lemon-theories.trycloudflare.com/auth/shopify/callback", "https://observer-logistics-lemon-theories.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://appliances-generic-establishing-weddings.trycloudflare.com/auth/callback", "https://appliances-generic-establishing-weddings.trycloudflare.com/auth/shopify/callback", "https://appliances-generic-establishing-weddings.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

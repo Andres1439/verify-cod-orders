@@ -141,7 +141,8 @@ export async function action({ request }: ActionFunctionArgs) {
       });
 
       if (!availableInstance) {
-        throw new Error("No hay números WhatsApp disponibles en este momento");
+        // RESPONDER CON JSON DE ERROR EN VEZ DE LANZAR ERROR
+        return json({ error: "NO_WHATSAPP_NUMBER_AVAILABLE" }, { status: 200 });
       }
 
       await db.whatsAppNumber.update({
@@ -196,16 +197,26 @@ export default function WhatsAppDashboard() {
   const navigation = useNavigation();
   
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
+  const [showNoNumbersModal, setShowNoNumbersModal] = useState(false);
 
   const isActivating = navigation.state === "submitting" && 
                       navigation.formData?.get("actionType") === "activate_whatsapp";
   const isDeactivating = navigation.state === "submitting" && 
                         navigation.formData?.get("actionType") === "deactivate_whatsapp";
 
-  const handleActivateWhatsApp = () => {
+  const handleActivateWhatsApp = async () => {
     const formData = new FormData();
     formData.append("actionType", "activate_whatsapp");
-    submit(formData, { method: "post" });
+    const response = await fetch("/api/whatsapp-activate", {
+      method: "post",
+      body: formData,
+    });
+    const data = await response.json();
+    if (data?.error === "NO_WHATSAPP_NUMBER_AVAILABLE") {
+      setShowNoNumbersModal(true);
+    } else if (data?.success) {
+      window.location.reload();
+    }
   };
 
   const handleDeactivateWhatsApp = () => {
@@ -422,6 +433,29 @@ export default function WhatsAppDashboard() {
 
             <Text as="p" tone="subdued">
               El número estará disponible para otras tiendas. Puedes conectar uno nuevo más tarde.
+            </Text>
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+
+      {/* Modal de error: No hay números disponibles */}
+      <Modal
+        open={showNoNumbersModal}
+        onClose={() => setShowNoNumbersModal(false)}
+        title="Sin números disponibles"
+        primaryAction={undefined}
+        secondaryActions={[
+          {
+            content: "Cerrar",
+            onAction: () => setShowNoNumbersModal(false),
+          },
+        ]}
+      >
+        <Modal.Section>
+          <BlockStack gap="300">
+            <Text as="p">
+              No hay números de WhatsApp disponibles en este momento.<br />
+              Por favor, contacta a nuestro equipo de soporte para más información.
             </Text>
           </BlockStack>
         </Modal.Section>
