@@ -557,26 +557,147 @@ function addCountryCodeToPhone(phone: string, countryCode: string): string {
 
   const phoneCountryCode = phoneCountryCodes[countryCode] || '51'; // Default Perú
 
-  // Si el teléfono ya tiene código de país, no agregarlo
+  // Si el teléfono ya tiene código de país, asegurar que tenga el signo +
   if (cleanPhone.startsWith(phoneCountryCode)) {
-    return cleanPhone;
+    return `+${cleanPhone}`;
   }
 
-  // Si el teléfono empieza con 9 (típico de móviles peruanos), agregar código
+  // Si el teléfono empieza con 9 (típico de móviles peruanos), agregar código con +
   if (countryCode === 'PE' && cleanPhone.startsWith('9') && cleanPhone.length === 9) {
-    return `51${cleanPhone}`;
+    return `+51${cleanPhone}`;
   }
   
-  // Si el teléfono empieza con 3 (típico de móviles colombianos), agregar código
+  // Si el teléfono empieza con 3 (típico de móviles colombianos), agregar código con +
   if (countryCode === 'CO' && cleanPhone.startsWith('3') && cleanPhone.length === 10) {
-    return `57${cleanPhone}`;
+    return `+57${cleanPhone}`;
   }
 
-  // Para otros casos, agregar código de país
-  return `${phoneCountryCode}${cleanPhone}`;
+  // Para otros casos, agregar código de país con +
+  return `+${phoneCountryCode}${cleanPhone}`;
 }
 
-// ✅ MODIFICADA: createShopifyOrder con price explícito y usar shopInfo
+// ✅ NUEVA FUNCIÓN: Crear o actualizar customer en Shopify
+async function createOrUpdateCustomer(
+  shopDomain: string,
+  accessToken: string,
+  customerData: ShopifyCustomerData,
+  requestId: string
+): Promise<{ success: boolean; customerId?: string; error?: string }> {
+  try {
+    // Buscar customer existente por email
+    let existingCustomer = null;
+    if (customerData.email) {
+      const searchResponse = await fetch(
+        `https://${shopDomain}/admin/api/2025-04/customers/search.json?query=email:${encodeURIComponent(customerData.email)}`,
+        {
+          method: "GET",
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (searchResponse.ok) {
+        const searchResult = await searchResponse.json();
+        if (searchResult.customers && searchResult.customers.length > 0) {
+          existingCustomer = searchResult.customers[0];
+        }
+      }
+    }
+
+    // ✅ OMITIR CAMPOS VACÍOS EN CUSTOMER PAYLOAD
+    const customerInfo: any = {
+      tags: "chatbot"
+    };
+    
+    // Solo agregar campos que tienen valores reales
+    if (customerData.firstName && customerData.firstName.trim() !== "") {
+      customerInfo.first_name = customerData.firstName.trim();
+    }
+    if (customerData.lastName && customerData.lastName.trim() !== "") {
+      customerInfo.last_name = customerData.lastName.trim();
+    }
+    if (customerData.email && customerData.email.trim() !== "") {
+      customerInfo.email = customerData.email.trim();
+      customerInfo.verified_email = true;
+    }
+    if (customerData.phone && customerData.phone.trim() !== "") {
+      customerInfo.phone = customerData.phone.trim();
+    }
+
+    const customerPayload = {
+      customer: customerInfo
+    };
+
+    let response;
+    if (existingCustomer) {
+      // Actualizar customer existente
+      response = await fetch(
+        `https://${shopDomain}/admin/api/2025-04/customers/${existingCustomer.id}.json`,
+        {
+          method: "PUT",
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(customerPayload),
+        }
+      );
+    } else {
+      // Crear nuevo customer
+      response = await fetch(
+        `https://${shopDomain}/admin/api/2025-04/customers.json`,
+        {
+          method: "POST",
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(customerPayload),
+        }
+      );
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error("Error creando/actualizando customer:", {
+        requestId,
+        status: response.status,
+        error: errorText,
+      });
+      return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+    }
+
+    const result = await response.json();
+    const customer = result.customer;
+
+    logger.info("Customer creado/actualizado exitosamente:", {
+      requestId,
+      customerId: customer.id,
+      email: customer.email,
+      phone: customer.phone,
+      action: existingCustomer ? "updated" : "created"
+    });
+
+    return {
+      success: true,
+      customerId: customer.id.toString()
+    };
+
+  } catch (error) {
+    logger.error("Error en createOrUpdateCustomer:", {
+      requestId,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error"
+    };
+  }
+}
+
+// ✅ MODIFICADA: createShopifyOrder con customer creation y price explícito
 async function createShopifyOrder({
   shopDomain,
   accessToken,
@@ -598,6 +719,22 @@ async function createShopifyOrder({
       timestamp: Date.now(),
     });
 
+    // ✅ PASO 1: Crear o actualizar customer primero
+    const customerResult = await createOrUpdateCustomer(
+      shopDomain,
+      accessToken,
+      customerData,
+      requestId
+    );
+
+    if (!customerResult.success) {
+      logger.error("Error creando/actualizando customer:", {
+        requestId,
+        error: customerResult.error,
+      });
+      // Continuar sin customer_id si falla
+    }
+
     const uniqueNote = "chatbot";
 
     // ✅ FUNCIÓN HELPER PARA OMITIR CAMPOS VACÍOS
@@ -611,7 +748,7 @@ async function createShopifyOrder({
       return result;
     };
 
-    // ✅ PREPARAR DATOS DEL CLIENTE OMITIENDO CAMPOS VACÍOS
+    // ✅ PREPARAR DATOS DEL CLIENTE - SOLO CAMPOS PROPORCIONADOS
     const customerInfo = omitEmptyFields({
       first_name: customerData.firstName,
       last_name: customerData.lastName,
@@ -619,40 +756,50 @@ async function createShopifyOrder({
       phone: customerData.phone,
     });
 
-    // ✅ PREPARAR DIRECCIÓN DE FACTURACIÓN OMITIENDO CAMPOS VACÍOS
-    const billingAddressInfo = omitEmptyFields({
-      first_name: shippingAddress.firstName,
-      last_name: shippingAddress.lastName,
+    // ✅ PREPARAR DIRECCIÓN DE FACTURACIÓN - VALORES DESCRIPTIVOS PARA CAMPOS FALTANTES
+    const billingAddressInfo = {
+      first_name: shippingAddress.firstName || customerData.firstName,
+      last_name: shippingAddress.lastName || customerData.lastName || "Cliente", // MANTENER COMO CLIENTE
       address1: shippingAddress.address1,
-      city: shippingAddress.city,
-      province: shippingAddress.province,
+      city: shippingAddress.city || "No especificada",
+      province: shippingAddress.province || "No especificada", 
       country: shippingAddress.country,
-      zip: shippingAddress.zip,
-      phone: shippingAddress.phone,
-    });
+      zip: shippingAddress.zip || "00000",
+      phone: shippingAddress.phone || customerData.phone,
+    };
 
-    // ✅ PREPARAR DIRECCIÓN DE ENVÍO OMITIENDO CAMPOS VACÍOS
-    const shippingAddressInfo = omitEmptyFields({
-      first_name: shippingAddress.firstName,
-      last_name: shippingAddress.lastName,
+    // ✅ PREPARAR DIRECCIÓN DE ENVÍO - VALORES DESCRIPTIVOS PARA CAMPOS FALTANTES
+    const shippingAddressInfo = {
+      first_name: shippingAddress.firstName || customerData.firstName,
+      last_name: shippingAddress.lastName || customerData.lastName || "Cliente", // MANTENER COMO CLIENTE
       address1: shippingAddress.address1,
-      city: shippingAddress.city,
-      province: shippingAddress.province,
+      city: shippingAddress.city || "No especificada",
+      province: shippingAddress.province || "No especificada",
       country: shippingAddress.country,
-      zip: shippingAddress.zip,
-      phone: shippingAddress.phone,
-    });
+      zip: shippingAddress.zip || "00000",
+      phone: shippingAddress.phone || customerData.phone,
+    };
 
     const orderData = {
       order: {
         note: uniqueNote,
-        // ✅ SOLO INCLUIR EMAIL SI NO ESTÁ VACÍO
-        ...(customerData.email && { email: customerData.email }),
-        // ✅ SOLO INCLUIR CUSTOMER SI TIENE AL MENOS UN CAMPO
-        ...(Object.keys(customerInfo).length > 0 && { customer: customerInfo }),
-        // ✅ SOLO INCLUIR BILLING_ADDRESS SI TIENE AL MENOS UN CAMPO
+        // ✅ INCLUIR TELÉFONO A NIVEL DE ORDEN - REQUERIDO POR SHOPIFY
+        ...(customerData.phone && { phone: customerData.phone }),
+        // ✅ INCLUIR EMAIL DE CONTACTO A NIVEL DE ORDEN
+        ...(customerData.email && { contact_email: customerData.email }),
+        // ✅ INCLUIR CUSTOMER_ID SI SE OBTUVO EXITOSAMENTE
+        ...(customerResult.success && customerResult.customerId && { 
+          customer: { 
+            id: parseInt(customerResult.customerId)
+          } 
+        }),
+        // ✅ INCLUIR EMAIL SI NO ESTÁ VACÍO Y NO HAY CUSTOMER_ID
+        ...(!customerResult.success && customerData.email && { email: customerData.email }),
+        // ✅ INCLUIR CUSTOMER DATA SI NO HAY CUSTOMER_ID Y TIENE DATOS
+        ...(!customerResult.success && Object.keys(customerInfo).length > 0 && { customer: customerInfo }),
+        // ✅ INCLUIR BILLING_ADDRESS SOLO SI TIENE DATOS
         ...(Object.keys(billingAddressInfo).length > 0 && { billing_address: billingAddressInfo }),
-        // ✅ SOLO INCLUIR SHIPPING_ADDRESS SI TIENE AL MENOS UN CAMPO
+        // ✅ INCLUIR SHIPPING_ADDRESS SOLO SI TIENE DATOS
         ...(Object.keys(shippingAddressInfo).length > 0 && { shipping_address: shippingAddressInfo }),
         line_items: lineItems.map((item) => ({
           variant_id: item.variantId,
@@ -677,30 +824,10 @@ async function createShopifyOrder({
       },
     };
 
-    logger.info("Datos enviados a Shopify:", {
+    logger.info("Orden enviada a Shopify:", {
       requestId,
-      email: orderData.order.email,
-      customer: {
-        first_name: orderData.order.customer.first_name,
-        last_name: orderData.order.customer.last_name,
-        email: orderData.order.customer.email,
-        phone: orderData.order.customer.phone,
-      },
-      shipping_address: {
-        first_name: orderData.order.shipping_address.first_name,
-        last_name: orderData.order.shipping_address.last_name,
-        address1: orderData.order.shipping_address.address1,
-        city: orderData.order.shipping_address.city,
-        province: orderData.order.shipping_address.province,
-        country: orderData.order.shipping_address.country,
-        zip: orderData.order.shipping_address.zip,
-        phone: orderData.order.shipping_address.phone,
-      },
       variant_id: orderData.order.line_items[0]?.variant_id,
       quantity: orderData.order.line_items[0]?.quantity,
-      price: orderData.order.line_items[0]?.price,
-      note: orderData.order.note,
-      tags: orderData.order.tags,
       currency: orderData.order.currency,
     });
 
@@ -1066,10 +1193,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       firstName: finalFirstName || "", // ✅ VACÍO si no se proporcionó
       lastName: finalLastName || "",   // ✅ VACÍO si no se proporcionó
       address1: cleanAddress1 || "",   // ✅ VACÍO si no se proporcionó
-      city: cleanCity || "",           // ✅ VACÍO si no se proporcionó
-      province: cleanProvince || "",   // ✅ VACÍO si no se proporcionó
+      city: cleanCity || "No especificada",       // ✅ VALOR DESCRIPTIVO
+      province: cleanProvince || "No especificada", // ✅ VALOR DESCRIPTIVO
       country: cleanCountry, // ✅ Usar país detectado de la tienda
-      zip: cleanZip || "",             // ✅ VACÍO si no se proporcionó
+      zip: cleanZip || "00000",        // ✅ VALOR DESCRIPTIVO
       phone: phoneWithCountryCode,
     };
 
