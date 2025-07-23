@@ -236,25 +236,41 @@ function cleanInvalidEmail(email: string): string {
   return cleanEmail;
 }
 
-// ✅ NUEVA: VALIDACIÓN DE TELÉFONO LOCAL (SIN CÓDIGO DE PAÍS)
+// ✅ NUEVA: VALIDACIÓN DE TELÉFONO FLEXIBLE PARA MÚLTIPLES PAÍSES
 function validateLocalPhone(phone: string, countryCode: string): boolean {
-  const phoneClean = phone.replace(/[\s\-\+]/g, "");
+  const phoneClean = phone.replace(/[\s\-\+\(\)]/g, "");
 
+  // ✅ VALIDACIÓN BÁSICA: Solo números
   if (!/^\d+$/.test(phoneClean)) {
     return false;
   }
 
-  // Validar formatos locales por país
-  const localPatterns: Record<string, RegExp> = {
-    'PE': /^9\d{8}$/,      // Perú: 9 + 8 dígitos
-    'CO': /^3\d{9}$/,      // Colombia: 3 + 9 dígitos  
-    'MX': /^\d{10}$/,      // México: 10 dígitos
-    'AR': /^9\d{9}$/,      // Argentina: 9 + 9 dígitos
-    'CL': /^9\d{8}$/,      // Chile: 9 + 8 dígitos
+  // ✅ VALIDACIÓN FLEXIBLE: Longitud entre 7 y 15 dígitos
+  // Esto cubre la mayoría de formatos internacionales
+  const phoneLength = phoneClean.length;
+  
+  if (phoneLength < 7 || phoneLength > 15) {
+    return false;
+  }
+
+  // ✅ VALIDACIONES ADICIONALES OPCIONALES POR REGIÓN
+  // Estas son sugerencias, pero no restrictivas
+  const commonPatterns = {
+    // Números que empiecen con 0 (muchos países usan esto)
+    startsWithZero: /^0\d{6,14}$/,
+    // Números que empiecen con dígitos del 1-9
+    startsWithDigit: /^[1-9]\d{6,14}$/,
+    // Números que empiecen con 6,7,8,9 (comunes en móviles)
+    mobilePattern: /^[6-9]\d{6,14}$/
   };
 
-  const pattern = localPatterns[countryCode];
-  return pattern ? pattern.test(phoneClean) : phoneClean.length >= 8;
+  // ✅ ACEPTAR SI CUMPLE CUALQUIER PATRÓN COMÚN
+  return (
+    commonPatterns.startsWithZero.test(phoneClean) ||
+    commonPatterns.startsWithDigit.test(phoneClean) ||
+    commonPatterns.mobilePattern.test(phoneClean) ||
+    phoneLength >= 8 // Fallback: cualquier número de 8+ dígitos
+  );
 }
 
 // ✅ ANTIGUA: VALIDACIÓN DE TELÉFONO CON CÓDIGO DE PAÍS (MANTENER PARA USAR DESPUÉS)
@@ -277,36 +293,49 @@ function validatePhoneWithCountryCode(phone: string): boolean {
   return validPatterns.some(pattern => pattern.test(phoneClean));
 }
 
-// ✅ CORREGIDA: VALIDACIÓN DE DATOS MÍNIMOS (USA TELÉFONO LOCAL)
-function validateMinimalOrderData(data: any, countryCode: string) {
+// ✅ NUEVA: VALIDACIÓN DE DATOS ESENCIALES PARA SHOPIFY 2025
+function validateEssentialOrderData(data: any, countryCode: string) {
   const errors: string[] = [];
 
-  if (!data.phone || data.phone.trim() === "") {
-    errors.push("Número de teléfono es requerido");
+  // ✅ CAMPOS OBLIGATORIOS PARA EL CLIENTE
+  if (!data.first_name || data.first_name.trim() === "") {
+    errors.push("Nombre es requerido");
   }
 
-  // ✅ CAMBIO: Validar teléfono local, no con código de país
+  if (!data.phone || data.phone.trim() === "") {
+    errors.push("Número de contacto es requerido");
+  }
+
+  if (!data.address1 || data.address1.trim() === "") {
+    errors.push("Dirección es requerida");
+  }
+
+  if (!data.email || data.email.trim() === "") {
+    errors.push("Correo electrónico es requerido");
+  }
+
+  // ✅ VALIDAR FORMATO DE EMAIL
+  if (data.email && data.email.trim() !== "") {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(data.email.trim())) {
+      errors.push("Formato de correo electrónico inválido");
+    }
+  }
+
+  // ✅ VALIDAR TELÉFONO CON FORMATO FLEXIBLE
   if (data.phone && !validateLocalPhone(data.phone, countryCode)) {
-    const examples: Record<string, string> = {
-      'PE': '987654321 (9 dígitos empezando en 9)',
-      'CO': '3001234567 (10 dígitos empezando en 3)',
-      'MX': '5551234567 (10 dígitos)',
-      'AR': '911234567 (9 dígitos empezando en 9)',
-      'CL': '987654321 (9 dígitos empezando en 9)'
-    };
-    
-    const example = examples[countryCode] || '987654321';
     errors.push(
-      `Formato de teléfono inválido para ${countryCode}. Ejemplo válido: ${example}`
+      `Número de teléfono inválido. Debe tener entre 7 y 15 dígitos y contener solo números. Ejemplos válidos: 987654321, 3001234567, 5551234567`
     );
   }
 
+  // ✅ CAMPOS OBLIGATORIOS PARA EL PRODUCTO
   if (!data.product_name || data.product_name.trim() === "") {
     errors.push("Nombre del producto es requerido");
   }
 
   if (!data.variant_id || data.variant_id.trim() === "") {
-    errors.push("ID del producto es requerido");
+    errors.push("ID del producto (variant_id) es requerido");
   }
 
   if (!data.price || cleanPrice(data.price) <= 0) {
@@ -480,6 +509,28 @@ async function getShopInfoWithCountry(
   }
 }
 
+// ✅ NUEVA FUNCIÓN: OBTENER NOMBRE DEL PAÍS DESDE CÓDIGO
+function getCountryNameFromCode(countryCode: string): string {
+  const countryNames: Record<string, string> = {
+    'PE': 'Peru',
+    'CO': 'Colombia', 
+    'MX': 'Mexico',
+    'US': 'United States',
+    'CA': 'Canada',
+    'AR': 'Argentina',
+    'CL': 'Chile',
+    'BR': 'Brazil',
+    'EC': 'Ecuador',
+    'VE': 'Venezuela',
+    'ES': 'Spain',
+    'UY': 'Uruguay',
+    'PY': 'Paraguay',
+    'BO': 'Bolivia',
+  };
+  
+  return countryNames[countryCode] || 'Peru'; // Default Peru
+}
+
 // ✅ NUEVA FUNCIÓN: AGREGAR CÓDIGO DE PAÍS AL TELÉFONO
 function addCountryCodeToPhone(phone: string, countryCode: string): string {
   // Limpiar teléfono
@@ -549,20 +600,60 @@ async function createShopifyOrder({
 
     const uniqueNote = "chatbot";
 
+    // ✅ FUNCIÓN HELPER PARA OMITIR CAMPOS VACÍOS
+    const omitEmptyFields = (obj: any) => {
+      const result: any = {};
+      for (const [key, value] of Object.entries(obj)) {
+        if (value !== "" && value !== null && value !== undefined) {
+          result[key] = value;
+        }
+      }
+      return result;
+    };
+
+    // ✅ PREPARAR DATOS DEL CLIENTE OMITIENDO CAMPOS VACÍOS
+    const customerInfo = omitEmptyFields({
+      first_name: customerData.firstName,
+      last_name: customerData.lastName,
+      email: customerData.email,
+      phone: customerData.phone,
+    });
+
+    // ✅ PREPARAR DIRECCIÓN DE FACTURACIÓN OMITIENDO CAMPOS VACÍOS
+    const billingAddressInfo = omitEmptyFields({
+      first_name: shippingAddress.firstName,
+      last_name: shippingAddress.lastName,
+      address1: shippingAddress.address1,
+      city: shippingAddress.city,
+      province: shippingAddress.province,
+      country: shippingAddress.country,
+      zip: shippingAddress.zip,
+      phone: shippingAddress.phone,
+    });
+
+    // ✅ PREPARAR DIRECCIÓN DE ENVÍO OMITIENDO CAMPOS VACÍOS
+    const shippingAddressInfo = omitEmptyFields({
+      first_name: shippingAddress.firstName,
+      last_name: shippingAddress.lastName,
+      address1: shippingAddress.address1,
+      city: shippingAddress.city,
+      province: shippingAddress.province,
+      country: shippingAddress.country,
+      zip: shippingAddress.zip,
+      phone: shippingAddress.phone,
+    });
+
     const orderData = {
       order: {
         note: uniqueNote,
-        email: customerData.email,
-        shipping_address: {
-          first_name: shippingAddress.firstName,
-          last_name: shippingAddress.lastName,
-          address1: shippingAddress.address1,
-          city: shippingAddress.city,
-          province: shippingAddress.province,
-          country: shippingAddress.country,
-          zip: shippingAddress.zip,
-          phone: shippingAddress.phone,
-        },
+        // ✅ SOLO INCLUIR EMAIL SI NO ESTÁ VACÍO
+        ...(customerData.email && { email: customerData.email }),
+        // ✅ SOLO INCLUIR CUSTOMER SI TIENE AL MENOS UN CAMPO
+        ...(Object.keys(customerInfo).length > 0 && { customer: customerInfo }),
+        // ✅ SOLO INCLUIR BILLING_ADDRESS SI TIENE AL MENOS UN CAMPO
+        ...(Object.keys(billingAddressInfo).length > 0 && { billing_address: billingAddressInfo }),
+        // ✅ SOLO INCLUIR SHIPPING_ADDRESS SI TIENE AL MENOS UN CAMPO
+        ...(Object.keys(shippingAddressInfo).length > 0 && { shipping_address: shippingAddressInfo }),
         line_items: lineItems.map((item) => ({
           variant_id: item.variantId,
           quantity: item.quantity,
@@ -589,12 +680,27 @@ async function createShopifyOrder({
     logger.info("Datos enviados a Shopify:", {
       requestId,
       email: orderData.order.email,
+      customer: {
+        first_name: orderData.order.customer.first_name,
+        last_name: orderData.order.customer.last_name,
+        email: orderData.order.customer.email,
+        phone: orderData.order.customer.phone,
+      },
+      shipping_address: {
+        first_name: orderData.order.shipping_address.first_name,
+        last_name: orderData.order.shipping_address.last_name,
+        address1: orderData.order.shipping_address.address1,
+        city: orderData.order.shipping_address.city,
+        province: orderData.order.shipping_address.province,
+        country: orderData.order.shipping_address.country,
+        zip: orderData.order.shipping_address.zip,
+        phone: orderData.order.shipping_address.phone,
+      },
       variant_id: orderData.order.line_items[0]?.variant_id,
       quantity: orderData.order.line_items[0]?.quantity,
-      price: orderData.order.line_items[0]?.price, // ✅ LOG DEL PRICE
+      price: orderData.order.line_items[0]?.price,
       note: orderData.order.note,
       tags: orderData.order.tags,
-      address: orderData.order.shipping_address.address1,
       currency: orderData.order.currency,
     });
 
@@ -693,19 +799,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const {
       shopDomain,
       first_name,
-      last_name,
       email,
       phone,
       address1,
-      city,
-      zip,
-      country,
-      province,
       product_name,
       price,
       quantity,
       variant_id: rawVariantId,
     } = body;
+
+    // ✅ CAMPOS FIJOS VACÍOS SEGÚN REQUERIMIENTO
+    const last_name = "";
+    const city = "";
+    const zip = "";
+    const province = "";
 
     function extractVariantId(variantId: string): string {
       if (!variantId) return variantId;
@@ -808,8 +915,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       timezone,
     });
 
-    // ✅ 2. SEGUNDO: VALIDAR CON TELÉFONO LOCAL (AHORA QUE TENEMOS EL PAÍS)
-    const basicErrors = validateMinimalOrderData(body, countryCode);
+    // ✅ 2. SEGUNDO: VALIDAR CAMPOS ESENCIALES (NOMBRE, CONTACTO, DIRECCIÓN, CORREO)
+    const basicErrors = validateEssentialOrderData(body, countryCode);
     const securityErrors = validateNoDefaultValues(body);
 
     const allErrors = [...basicErrors, ...securityErrors];
@@ -901,12 +1008,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // ✅ CAMPOS DE DIRECCIÓN: Solo usar si fueron proporcionados realmente
     const cleanAddress1 =
       address1 && cleanTextField(address1) ? cleanTextField(address1) : "";
-    const cleanCity = city && cleanTextField(city) ? cleanTextField(city) : "";
-    const cleanProvince =
-      province && cleanTextField(province) ? cleanTextField(province) : "";
-    const cleanCountry =
-      country && cleanTextField(country) ? cleanTextField(country) : "";
-    const cleanZip = zip && cleanTextField(zip) ? cleanTextField(zip) : "";
+    // ✅ CAMPOS FIJOS VACÍOS SEGÚN REQUERIMIENTO
+    const cleanCity = "";
+    const cleanProvince = "";
+    // ✅ PAÍS AUTOMÁTICO DESDE LA TIENDA
+    const cleanCountry = getCountryNameFromCode(countryCode);
+    // ✅ ZIP FIJO VACÍO SEGÚN REQUERIMIENTO
+    const cleanZip = "";
 
     // ✅ LOG DETALLADO DE QUÉ DATOS SE USARON
     logger.info("Procesamiento de datos del cliente:", {
@@ -914,13 +1022,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       required_fields_config: requiredFields,
       provided_by_client: {
         first_name: !!first_name && !!finalFirstName,
-        last_name: !!last_name && !!finalLastName,
+        last_name: false,
         email: !!email && !!finalEmail,
         address1: !!address1 && !!cleanAddress1,
-        city: !!city && !!cleanCity,
-        province: !!province && !!cleanProvince,
-        country: !!country && !!cleanCountry,
-        zip: !!zip && !!cleanZip,
+        city: false,
+        province: false,
+        country: true,
+        zip: false,
       },
       final_values: {
         firstName: finalFirstName || "[NO PROPORCIONADO]",
@@ -937,19 +1045,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // ✅ VALIDAR QUE SOLO SE USEN DATOS REALES PARA MOSTRAR AL CLIENTE
     const hasRealFirstName = !!finalFirstName && !!first_name;
-    const hasRealLastName = !!finalLastName && !!last_name;
+    const hasRealLastName = false; // Siempre falso, campo fijo vacío
     const hasRealEmail = !!finalEmail && !!email;
     const hasRealAddress = !!cleanAddress1 && !!address1;
-    const hasRealCity = !!cleanCity && !!city;
-    const hasRealProvince = !!cleanProvince && !!province;
-    const hasRealCountry = !!cleanCountry && !!country;
-    const hasRealZip = !!cleanZip && !!zip;
+    const hasRealCity = false; // Siempre falso, campo fijo vacío
+    const hasRealProvince = false; // Siempre falso, campo fijo vacío
+    const hasRealCountry = true; // Siempre verdadero, automático desde tienda
+    const hasRealZip = false; // Siempre falso, campo fijo vacío
 
     // ✅ PREPARAR DATOS PARA SHOPIFY - USAR CAMPOS VACÍOS SI NO HAY DATOS
     const customerData: ShopifyCustomerData = {
       firstName: finalFirstName || "", // ✅ VACÍO si no se proporcionó
       lastName: finalLastName || "",   // ✅ VACÍO si no se proporcionó
-      email: finalEmail || generateTechnicalEmail(phoneWithCountryCode, shopDomain), // Email técnico solo si necesario
+      email: finalEmail || "", // ✅ VACÍO si no se proporcionó (no generar email técnico)
       phone: phoneWithCountryCode,
     };
 
@@ -960,7 +1068,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       address1: cleanAddress1 || "",   // ✅ VACÍO si no se proporcionó
       city: cleanCity || "",           // ✅ VACÍO si no se proporcionó
       province: cleanProvince || "",   // ✅ VACÍO si no se proporcionó
-      country: cleanCountry || countryCode, // ✅ Usar país de la tienda como fallback
+      country: cleanCountry, // ✅ Usar país detectado de la tienda
       zip: cleanZip || "",             // ✅ VACÍO si no se proporcionó
       phone: phoneWithCountryCode,
     };
