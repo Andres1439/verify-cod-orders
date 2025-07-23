@@ -143,6 +143,19 @@ export function isValidPhone(phone: string): boolean {
 }
 
 /**
+ * Valida si un string es un GraphQL ID válido de Shopify
+ * @param gid - GraphQL ID a validar (ej: "gid://shopify/Product/123")
+ * @returns true si es válido, false si no
+ */
+export function isValidShopifyGID(gid: string): boolean {
+  if (!gid || typeof gid !== 'string') return false;
+  
+  // Patrón para GraphQL ID de Shopify
+  const shopifyGIDPattern = /^gid:\/\/shopify\/[A-Za-z]+\/\d+$/;
+  return shopifyGIDPattern.test(gid);
+}
+
+/**
  * Extrae ID numérico de un GraphQL ID
  * @param graphqlId - ID de GraphQL (ej: "gid://shopify/Product/123")
  * @returns ID numérico como string
