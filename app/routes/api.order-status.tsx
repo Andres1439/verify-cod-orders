@@ -167,7 +167,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                   customer {
                     firstName
                     lastName
-                    phone
                     defaultPhoneNumber {
                       phoneNumber
                     }
