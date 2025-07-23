@@ -1,10 +1,9 @@
-// app/routes/api.order-status.tsx (VERSIÓN QUE FUNCIONA SIN SHOPIFY)
-// Reemplaza tu archivo actual con este código
-
+// app/routes/api.order-status.tsx - CON ORDER STATUS URL INTEGRADO
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
 import { decimalToString, decimalToCurrency } from "../utils/decimal-utils";
+import { decryptToken } from "../utils/encryption.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const headers = new Headers();
@@ -32,7 +31,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       );
     }
 
-    // 🔍 BUSCAR LA TIENDA (SIN VERIFICAR TOKEN)
+    // 🔍 BUSCAR LA TIENDA
     const shop = await db.shop.findUnique({
       where: { shop_domain: shopDomain },
       select: {
@@ -67,19 +66,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ].filter((pattern, index, self) => self.indexOf(pattern) === index); // Únicos
 
     // 🔍 BUSCAR EN BASE DE DATOS INTERNA
-
-
     const internalOrders = await db.orderConfirmation.findMany({
       where: {
         shop_id: shop.id,
         OR: [
-          // Buscar por número de orden
           { internal_order_number: orderNumber },
           { internal_order_number: `#${orderNumber}` },
           { internal_order_number: { contains: orderNumber } },
           { shopify_order_id: { contains: orderNumber } },
-
-          // Buscar por combinación de teléfono y orden
           ...phonePatterns.flatMap((pattern) => [
             {
               AND: [
@@ -92,29 +86,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 },
               ],
             },
-            // También buscar solo por teléfono si coincide exactamente
             { customer_phone: pattern },
           ]),
         ],
       },
-      orderBy: {
-        created_at: "desc",
-      },
-      take: 5, // Máximo 5 resultados
+      orderBy: { created_at: "desc" },
+      take: 5,
     });
-
-
 
     // 🎯 FILTRAR POR TELÉFONO SI HAY MÚLTIPLES RESULTADOS
     let matchingOrders = internalOrders;
-
     if (internalOrders.length > 1) {
-      // Si hay múltiples órdenes, filtrar por teléfono más estrictamente
       matchingOrders = internalOrders.filter((order) => {
         if (!order.customer_phone) return false;
-
         const orderCleanPhone = order.customer_phone.replace(/[^\d]/g, "");
-
         return phonePatterns.some((pattern) => {
           const patternClean = pattern.replace(/[^\d]/g, "");
           return (
@@ -125,45 +110,54 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           );
         });
       });
-
-
     }
 
     // 🎯 SELECCIONAR LA MEJOR COINCIDENCIA
     let selectedOrder = null;
-
     if (matchingOrders.length > 0) {
-      // Priorizar por exactitud del número de orden
       selectedOrder =
         matchingOrders.find(
           (order) =>
             order.internal_order_number === orderNumber ||
             order.internal_order_number === `#${orderNumber}`,
-        ) || matchingOrders[0]; // Si no hay coincidencia exacta, tomar la primera
-
-
+        ) || matchingOrders[0];
     }
 
-    // 🎯 INTENTAR SHOPIFY SOLO SI NO ENCONTRAMOS NADA Y HAY TOKEN
+    // ✨ NUEVA FUNCIONALIDAD: OBTENER SHOPIFY ORDER STATUS URL
+    let shopifyStatusUrl = null;
     let shopifyAttempted = false;
     let shopifyError = null;
 
-    if (!selectedOrder && shop.access_token) {
-
+    // 🎯 INTENTAR SHOPIFY (SIEMPRE SI HAY TOKEN, PARA OBTENER STATUS URL)
+    if (shop.access_token) {
       shopifyAttempted = true;
 
       try {
+        // Desencriptar token si es necesario
+        let accessToken = shop.access_token;
+        try {
+          const parsed = JSON.parse(shop.access_token);
+          if (parsed.encrypted && parsed.iv && parsed.tag) {
+            accessToken = decryptToken(parsed);
+          }
+        } catch {
+          // Token no encriptado, usar tal como viene
+        }
+
+        // ✨ QUERY MEJORADO: Incluir statusPageUrl para obtener el enlace de seguimiento
         const orderQuery = `#graphql
-          query getOrder($query: String!) {
+          query getOrderWithStatusUrl($query: String!) {
             orders(first: 3, query: $query) {
               edges {
                 node {
                   id
                   name
                   email
+                  phone
                   createdAt
                   displayFinancialStatus
                   displayFulfillmentStatus
+                  statusPageUrl
                   totalPriceSet {
                     shopMoney {
                       amount
@@ -173,6 +167,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                   customer {
                     firstName
                     lastName
+                    phone
                     defaultPhoneNumber {
                       phoneNumber
                     }
@@ -198,12 +193,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         `;
 
         const response = await fetch(
-          `https://${shopDomain}/admin/api/2024-10/graphql.json`,
+          `https://${shopDomain}/admin/api/2025-04/graphql.json`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-Shopify-Access-Token": shop.access_token,
+              "X-Shopify-Access-Token": accessToken,
+              "User-Agent": "VerifyCODOrders/1.0",
             },
             body: JSON.stringify({
               query: orderQuery,
@@ -214,34 +210,54 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
         if (response.ok) {
           const data = await response.json();
+          
           if (!data.errors && data.data?.orders?.edges?.length > 0) {
             const shopifyOrder = data.data.orders.edges[0].node;
+            
+            // Recopilar todos los teléfonos de la orden
             const orderPhones = [
               shopifyOrder.phone,
               shopifyOrder.customer?.phone,
+              shopifyOrder.customer?.defaultPhoneNumber?.phoneNumber,
             ].filter(Boolean);
 
             // Verificar teléfono
             const phoneMatch = phonePatterns.some((pattern) =>
-              orderPhones.some(
-                (orderPhone) =>
+              orderPhones.some((orderPhone) => {
+                const cleanOrderPhone = orderPhone?.replace(/[^\d]/g, "") || "";
+                const cleanPattern = pattern.replace(/[^\d]/g, "");
+                return (
                   orderPhone?.includes(pattern) ||
-                  pattern.includes(orderPhone?.replace(/[^\d]/g, "") || ""),
-              ),
+                  pattern.includes(cleanOrderPhone) ||
+                  cleanOrderPhone.endsWith(cleanPattern.slice(-8)) ||
+                  cleanPattern.endsWith(cleanOrderPhone.slice(-8))
+                );
+              })
             );
 
             if (phoneMatch) {
+              // ✅ ORDEN ENCONTRADA EN SHOPIFY CON TELÉFONO VÁLIDO
+              const formattedOrder = formatShopifyOrder(shopifyOrder);
+              
+              // ✨ AGREGAR STATUS URL SI ESTÁ DISPONIBLE
+              if (shopifyOrder.statusPageUrl) {
+                formattedOrder.trackingUrl = shopifyOrder.statusPageUrl;
+                formattedOrder.trackingMessage = "¡Haz clic aquí para seguir tu pedido en tiempo real!";
+              }
 
-              return json(
-                {
-                  success: true,
-                  source: "shopify",
-                  order: formatShopifyOrder(shopifyOrder),
-                },
-                { headers },
-              );
+              return json({
+                success: true,
+                source: "shopify",
+                order: formattedOrder,
+                trackingUrl: shopifyOrder.statusPageUrl || null,
+                message: shopifyOrder.statusPageUrl 
+                  ? "Orden encontrada. Aquí tienes el enlace para seguir tu pedido."
+                  : "Orden encontrada, pero el enlace de seguimiento no está disponible.",
+              }, { headers });
             } else {
               shopifyError = "phone_mismatch";
+              // Guardar la URL aunque no coincida el teléfono, por si acaso
+              shopifyStatusUrl = shopifyOrder.statusPageUrl;
             }
           } else {
             shopifyError = "not_found";
@@ -250,6 +266,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           shopifyError = `http_${response.status}`;
         }
       } catch (error) {
+        console.error("[Order Status] Error en Shopify:", error);
         shopifyError = "connection_error";
 
       }
@@ -258,28 +275,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // 🎯 RESPONDER SEGÚN LO ENCONTRADO
     if (selectedOrder) {
       // ✅ ORDEN ENCONTRADA EN BD INTERNA
+      const formattedOrder = formatInternalOrder(selectedOrder, orderNumber);
+      
+      // ✨ AGREGAR TRACKING URL DE SHOPIFY SI ESTÁ DISPONIBLE
+      if (shopifyStatusUrl) {
+        formattedOrder.trackingUrl = shopifyStatusUrl;
+        formattedOrder.trackingMessage = "También puedes seguir tu pedido en Shopify:";
+      }
 
-
-      return json(
-        {
-          success: true,
-          source: "internal_database",
-          order: formatInternalOrder(selectedOrder, orderNumber),
-          debug:
-            process.env.NODE_ENV === "development"
-              ? {
-                  searchResults: internalOrders.length,
-                  phonePatterns: phonePatterns.length,
-                  shopifyAttempted,
-                }
-              : undefined,
-        },
-        { headers },
-      );
+      return json({
+        success: true,
+        source: "internal_database",
+        order: formattedOrder,
+        trackingUrl: shopifyStatusUrl || null,
+        message: shopifyStatusUrl 
+          ? "Pedido encontrado. También incluimos el enlace de seguimiento de Shopify."
+          : "Pedido encontrado en nuestra base de datos.",
+        debug: process.env.NODE_ENV === "development" ? {
+          searchResults: internalOrders.length,
+          phonePatterns: phonePatterns.length,
+          shopifyAttempted,
+          shopifyStatusUrl: !!shopifyStatusUrl,
+        } : undefined,
+      }, { headers });
     } else {
       // ❌ NO ENCONTRADA
-
-
       const suggestions = [
         "Verifica que el número de orden sea correcto (ej: 1042, #1042)",
         "Asegúrate de usar el mismo teléfono con código de país del pedido",
@@ -288,29 +308,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
       if (shopifyAttempted && shopifyError) {
         suggestions.push(
-          "⚠️ También intentamos buscar en Shopify pero no encontramos coincidencias",
+          `⚠️ También intentamos buscar en Shopify: ${getShopifyErrorMessage(shopifyError)}`,
         );
       }
 
-      return json(
-        {
-          error: "Orden no encontrada",
-          message: `No encontramos la orden ${orderNumber} con el teléfono ${customerPhone}.`,
-          suggestions,
-          help: "Si los datos son correctos, puedes contactar con nuestro soporte",
-          debug:
-            process.env.NODE_ENV === "development"
-              ? {
-                  searchedInDatabase: true,
-                  resultsFound: internalOrders.length,
-                  shopifyAttempted,
-                  shopifyError,
-                  phonePatterns,
-                }
-              : undefined,
-        },
-        { status: 404, headers },
-      );
+      return json({
+        error: "Orden no encontrada",
+        message: `No encontramos la orden ${orderNumber} con el teléfono ${customerPhone}.`,
+        suggestions,
+        help: "Si los datos son correctos, puedes contactar con nuestro soporte",
+        // ✨ INCLUIR TRACKING URL AUNQUE NO COINCIDA EL TELÉFONO (OPCIONAL)
+        trackingUrl: shopifyStatusUrl || null,
+        trackingNote: shopifyStatusUrl 
+          ? "Encontramos una orden con este número pero con diferente teléfono. Usa este enlace solo si es tu pedido:"
+          : null,
+        debug: process.env.NODE_ENV === "development" ? {
+          searchedInDatabase: true,
+          resultsFound: internalOrders.length,
+          shopifyAttempted,
+          shopifyError,
+          phonePatterns,
+          shopifyStatusUrl: !!shopifyStatusUrl,
+        } : undefined,
+      }, { status: 404, headers });
     }
   } catch (error) {
     console.error("[API Order Status] ❌ Error crítico:", error);
@@ -332,14 +352,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 };
 
-// 🎯 FUNCIONES PARA FORMATEAR RESPUESTAS
+// ✨ NUEVA FUNCIÓN: Mensajes de error de Shopify más amigables
+function getShopifyErrorMessage(error: string): string {
+  const messages: Record<string, string> = {
+    phone_mismatch: "Encontramos la orden pero el teléfono no coincide",
+    not_found: "No encontramos la orden en Shopify",
+    connection_error: "Error de conexión con Shopify",
+  };
+  
+  if (error.startsWith("http_")) {
+    return `Error de servidor (${error.replace("http_", "")})`;
+  }
+  
+  return messages[error] || "Error desconocido";
+}
+
+// 🎯 FUNCIONES PARA FORMATEAR RESPUESTAS (MEJORADAS)
 function formatInternalOrder(order: any, requestedOrderNumber: string) {
   return {
     id: order.shopify_order_id || "DRAFT",
     orderNumber: order.internal_order_number || `#${requestedOrderNumber}`,
     status: {
-      // Solo usar estados reales del enum OrderConfirmationStatus
-      internal: order.status, // Estado real del enum: PENDING_CALL | CONFIRMED | DECLINED | NO_ANSWER | EXPIRED
+      internal: order.status,
       description: getInternalStatusDescription(order.status),
       statusColor: getStatusColor(order.status),
     },
@@ -369,6 +403,9 @@ function formatInternalOrder(order: any, requestedOrderNumber: string) {
     },
     type: "PROCESSING_ORDER",
     message: getOrderMessage(order.status),
+    // ✨ PLACEHOLDER PARA TRACKING URL (se agregará después si está disponible)
+    trackingUrl: null as string | null,
+    trackingMessage: null as string | null,
   };
 }
 
@@ -378,19 +415,19 @@ function formatShopifyOrder(order: any) {
     orderNumber: order.name,
     status: {
       payment: order.displayFinancialStatus || "PENDING",
-      // Usar solo estados reales - removido fulfillment inventado
+      fulfillment: order.displayFulfillmentStatus || "UNFULFILLED",
       description: `${order.displayFinancialStatus} | ${order.displayFulfillmentStatus}`,
       statusColor: "blue",
     },
     customer: {
-      name: `${order.customer?.firstName || ""} ${order.customer?.lastName || ""}`.trim(),
+      name: `${order.customer?.firstName || ""} ${order.customer?.lastName || ""}`.trim() || "Cliente",
       email: order.email || "",
-      phone: order.phone || order.customer?.phone,
+      phone: order.phone || order.customer?.phone || order.customer?.defaultPhoneNumber?.phoneNumber,
     },
     total: {
       amount: order.totalPriceSet.shopMoney.amount,
       currency: order.totalPriceSet.shopMoney.currencyCode,
-      formatted: `$${order.totalPriceSet.shopMoney.amount} ${order.totalPriceSet.shopMoney.currencyCode}`,
+      formatted: `${order.totalPriceSet.shopMoney.currencyCode} ${order.totalPriceSet.shopMoney.amount}`,
     },
     items: order.lineItems.edges.map((edge: any) => ({
       title: edge.node.title,
@@ -408,6 +445,8 @@ function formatShopifyOrder(order: any) {
     },
     type: "COMPLETED_ORDER",
     message: "Tu pedido ha sido procesado exitosamente",
+    trackingUrl: order.statusPageUrl || null,
+    trackingMessage: order.statusPageUrl ? "¡Haz clic aquí para seguir tu pedido en tiempo real!" : null,
   };
 }
 
