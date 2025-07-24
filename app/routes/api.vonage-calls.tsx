@@ -1,4 +1,4 @@
-// app/routes/api.vonage-calls.tsx
+// app/routes/api.vonage-calls.tsx - VERSIÓN SIMPLIFICADA QUE FUNCIONA
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { formatPhoneNumber } from "../utils/common-utils";
@@ -13,23 +13,35 @@ const VONAGE_CONFIG = {
   API_URL: "https://api.nexmo.com/v1/calls"
 };
 
-// 🛡️ Generar JWT para Vonage
+// 🛡️ Generar JWT para Vonage - VERSIÓN SIMPLIFICADA Y PROBADA
 function generateVonageJWT(): string {
   try {
+    // Validar variables de entorno
+    if (!VONAGE_CONFIG.APPLICATION_ID) {
+      throw new Error('VONAGE_APPLICATION_ID no está configurado');
+    }
+    
+    if (!VONAGE_CONFIG.PRIVATE_KEY) {
+      throw new Error('VONAGE_PRIVATE_KEY no está configurado');
+    }
+
     const now = Math.floor(Date.now() / 1000);
     
+    // Header del JWT
     const header = {
       alg: "RS256",
       typ: "JWT"
     };
     
+    // Payload del JWT con los claims requeridos por Vonage
     const payload = {
       iat: now,
       exp: now + 900, // 15 minutos
       application_id: VONAGE_CONFIG.APPLICATION_ID,
-      jti: crypto.randomBytes(16).toString('hex')
+      jti: crypto.randomUUID() // Usar crypto.randomUUID() en lugar de randomBytes
     };
     
+    // Función helper para codificar en base64url
     function base64UrlEncode(data: string): string {
       return Buffer.from(data)
         .toString('base64')
@@ -38,52 +50,54 @@ function generateVonageJWT(): string {
         .replace(/=/g, '');
     }
     
+    // Crear el JWT
     const encodedHeader = base64UrlEncode(JSON.stringify(header));
     const encodedPayload = base64UrlEncode(JSON.stringify(payload));
     const dataToSign = `${encodedHeader}.${encodedPayload}`;
     
+    // Limpiar la private key de manera simple
+    let privateKey = VONAGE_CONFIG.PRIVATE_KEY;
+    
+    // Reemplazar \n escapados con saltos de línea reales
+    if (privateKey.includes('\\n')) {
+      privateKey = privateKey.replace(/\\n/g, '\n');
+    }
+    
+    // Trim y limpiar
+    privateKey = privateKey.trim();
+    
+    // Validar formato básico
+    if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
+      throw new Error('Private key debe empezar con -----BEGIN PRIVATE KEY-----');
+    }
+    
+    if (!privateKey.endsWith('-----END PRIVATE KEY-----')) {
+      throw new Error('Private key debe terminar con -----END PRIVATE KEY-----');
+    }
+    
+    // Firmar
     const sign = crypto.createSign('RSA-SHA256');
     sign.update(dataToSign);
-    const signature = sign.sign(VONAGE_CONFIG.PRIVATE_KEY, 'base64');
+    const signature = sign.sign(privateKey, 'base64');
     
+    // Convertir a base64url
     const base64UrlSignature = signature
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=/g, '');
     
-    return `${dataToSign}.${base64UrlSignature}`;
+    const jwt = `${dataToSign}.${base64UrlSignature}`;
+    
+    console.log('✅ JWT generado exitosamente para Vonage');
+    return jwt;
+    
   } catch (error) {
-    console.error('❌ Error generando JWT:', error);
-    throw new Error('Failed to generate Vonage JWT');
+    console.error('❌ Error generando JWT:', {
+      error: error instanceof Error ? error.message : 'Error desconocido',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    throw error; // Re-throw para que se maneje arriba
   }
-}
-
-// 🎵 Generar NCCO para la llamada
-function generateNCCO(orderData: any, callUuid: string): any[] {
-  const customerName = orderData.customer_name || 'Cliente';
-  const orderTotal = parseFloat(orderData.order_total || '0').toFixed(2);
-  const currency = orderData.shop_currency || 'PEN';
-  
-  let talkText = 'Hola, te llamamos para confirmar tu pedido. Presiona 1 para confirmar, o 2 para cancelar.';
-  
-  if (parseFloat(orderTotal) > 0) {
-    talkText = `Hola ${customerName}, te llamamos para confirmar tu pedido por ${orderTotal} ${currency}. Presiona 1 para confirmar, o 2 para cancelar.`;
-  }
-  
-  return [
-    {
-      action: "talk",
-      text: talkText,
-      language: "es-ES"
-    },
-    {
-      action: "input",
-      eventUrl: [`${process.env.APP_URL}/api/vonage-dtmf?call_uuid=${callUuid}`],
-      timeOut: 15,
-      maxDigits: 1,
-      submitOnHash: false
-    }
-  ];
 }
 
 // 📞 POST - Iniciar llamada de verificación
@@ -94,6 +108,8 @@ export async function action({ request }: ActionFunctionArgs) {
     if (!orderId) {
       return json({ error: 'Order ID is required' }, { status: 400 });
     }
+    
+    console.log(`🔄 Procesando pedido: ${orderId}`);
     
     // 1. Obtener datos del pedido
     const order = await db.orderConfirmation.findFirst({
@@ -107,8 +123,11 @@ export async function action({ request }: ActionFunctionArgs) {
     });
     
     if (!order) {
+      console.log(`❌ Pedido no encontrado: ${orderId}`);
       return json({ error: 'Order not found or not pending call' }, { status: 404 });
     }
+    
+    console.log(`✅ Pedido encontrado: ${order.internal_order_number}`);
     
     // 2. Parsear datos del pedido
     const shippingAddress = typeof order.shipping_address === "string"
@@ -118,11 +137,13 @@ export async function action({ request }: ActionFunctionArgs) {
     
     // 3. Formatear número de teléfono
     const formattedPhone = formatPhoneNumber(order.customer_phone, country);
+    console.log(`📞 Número formateado: ${formattedPhone}`);
     
     // 4. Generar JWT
+    console.log('🔐 Generando JWT...');
     const jwt = generateVonageJWT();
     
-    // 5. Configurar llamada
+    // 5. Configurar llamada para Vonage
     const callPayload = {
       to: [{
         type: "phone",
@@ -137,23 +158,47 @@ export async function action({ request }: ActionFunctionArgs) {
       machine_detection: "continue"
     };
     
+    console.log('📡 Enviando llamada a Vonage API...');
+    console.log('Payload:', JSON.stringify(callPayload, null, 2));
+    
     // 6. Realizar llamada a Vonage
     const response = await fetch(VONAGE_CONFIG.API_URL, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${jwt}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify(callPayload)
     });
     
+    const responseText = await response.text();
+    console.log(`📊 Respuesta de Vonage (${response.status}):`, responseText);
+    
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Vonage API Error:', errorText);
-      return json({ error: 'Failed to initiate call' }, { status: 500 });
+      console.error('❌ Error de Vonage API:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: responseText
+      });
+      return json({ 
+        error: 'Failed to initiate call',
+        details: `Vonage API error: ${response.status} - ${responseText}`
+      }, { status: 500 });
     }
     
-    const callData = await response.json();
+    let callData;
+    try {
+      callData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ Error parseando respuesta de Vonage:', parseError);
+      return json({ 
+        error: 'Invalid response from Vonage API',
+        details: responseText
+      }, { status: 500 });
+    }
+    
+    console.log('✅ Llamada iniciada exitosamente:', callData);
     
     // 7. Actualizar base de datos
     await db.orderConfirmation.update({
@@ -166,22 +211,23 @@ export async function action({ request }: ActionFunctionArgs) {
       }
     });
     
-    console.log('✅ Call initiated successfully:', {
-      orderId,
-      callUuid: callData.uuid,
-      phone: formattedPhone
-    });
+    console.log('✅ Base de datos actualizada');
     
     return json({
       success: true,
       call_uuid: callData.uuid,
       order_id: orderId,
       phone: formattedPhone,
-      status: callData.status
+      status: callData.status,
+      conversation_uuid: callData.conversation_uuid
     });
     
   } catch (error) {
-    console.error('❌ Error in call initiation:', error);
+    console.error('❌ Error en la iniciación de llamada:', {
+      error: error instanceof Error ? error.message : 'Error desconocido',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    
     return json({ 
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -194,6 +240,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
   try {
     const url = new URL(request.url);
     const limit = parseInt(url.searchParams.get('limit') || '10');
+    
+    console.log(`📋 Buscando pedidos pendientes (límite: ${limit})`);
     
     const pendingOrders = await db.orderConfirmation.findMany({
       where: {
@@ -212,7 +260,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
       take: limit
     });
     
-    // Para N8N, es mejor devolver los items directamente sin wrapper
+    console.log(`📊 Encontrados ${pendingOrders.length} pedidos pendientes`);
+    
+    // Para N8N, devolver los items directamente
     const orders = pendingOrders.map(order => ({
       id: order.id,
       customer_phone: order.customer_phone,
@@ -225,7 +275,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return json(orders);
     
   } catch (error) {
-    console.error('❌ Error fetching pending orders:', error);
+    console.error('❌ Error obteniendo pedidos pendientes:', error);
     return json({ error: 'Failed to fetch orders' }, { status: 500 });
   }
 }

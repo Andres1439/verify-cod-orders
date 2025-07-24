@@ -8,6 +8,8 @@ import { logger } from "../utils/logger.server";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const headers = new Headers();
   headers.append("Access-Control-Allow-Origin", "*");
+  headers.append("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  headers.append("Access-Control-Allow-Headers", "Content-Type, Authorization, content-type, accept, origin, x-requested-with");
   headers.append("Content-Type", "application/json");
 
   try {
@@ -41,6 +43,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       provincia: false,
       pais: false,
     };
+
+    console.log(`🔍 API DEBUG: Configuración encontrada para ${shopDomain}:`, {
+      shop_id: shop.id,
+      has_config: !!shop.chatbot_configuration,
+      config_data: shop.chatbot_configuration
+    });
 
     const chatbotConfig = shop.chatbot_configuration
       ? {
@@ -224,7 +232,8 @@ export const options = async () => {
   const headers = new Headers();
   headers.append("Access-Control-Allow-Origin", "*");
   headers.append("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  headers.append("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  headers.append("Access-Control-Allow-Headers", "Content-Type, Authorization, content-type, accept, origin, x-requested-with");
+  headers.append("Access-Control-Max-Age", "86400");
 
   return new Response(null, { status: 200, headers });
 };

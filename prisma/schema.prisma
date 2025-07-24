@@ -94,16 +94,16 @@ model Shop {
 }
 
 model ChatbotConfiguration {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  shop_id         String   @db.Uuid
-  bot_name        String   @default("Verify")
-  welcome_message String   @default("Hola! Estoy aquí para ayudarte.")
-  webhook_url     String?
-  is_active       Boolean  @default(true)
-  personality     String?  @default("Chatbot amigable y conciso")
-  required_fields Json?    @default("{\"nombre\": false, \"numero\": true, \"correo\": true, \"direccion\": false, \"ciudad\": false, \"provincia\": false, \"pais\": false}")
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shop_id          String   @db.Uuid
+  bot_name         String   @default("Verify")
+  welcome_message  String   @default("Hola! Estoy aquí para ayudarte.")
+  webhook_url      String?
+  is_active        Boolean  @default(true)
+  personality      String?  @default("Chatbot amigable y conciso")
+  required_fields  Json?    @default("{\"nombre\": false, \"numero\": true, \"correo\": true, \"direccion\": false, \"ciudad\": false, \"provincia\": false, \"pais\": false}")
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
 
   shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
 

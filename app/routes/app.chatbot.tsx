@@ -69,6 +69,7 @@ export const loader = async ({ request }: { request: Request }) => {
       chatbotConfig: {
         bot_name: "",
         welcome_message: "",
+        input_placeholder: "",
         personality: "",
         required_fields: {
           // ✅ Consistente con schema.prisma default
@@ -340,6 +341,7 @@ type LoaderData = {
   chatbotConfig: {
     bot_name: string;
     welcome_message: string;
+    input_placeholder: string;
     personality: string;
     required_fields: RequiredFields;
     is_active: boolean;
