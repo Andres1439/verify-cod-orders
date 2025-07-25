@@ -3,6 +3,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { logger } from "../utils/logger.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   try {
@@ -18,7 +19,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return await handleAdminQuery(request);
     
   } catch (error) {
-    console.error("Error en WhatsApp loader:", error);
+    logger.error("Error en WhatsApp loader", { error });
     return json({
       success: false,
       error: "Error interno del servidor"
@@ -109,7 +110,7 @@ async function detectShopByPhoneNumber(phoneNumberId: string) {
     });
 
   } catch (error) {
-    console.error('[WHATSAPP] Error en detección:', error);
+    logger.error('Error en detección WhatsApp', { error });
     return json({
       success: false,
       error: "Error al detectar tienda"
@@ -196,7 +197,7 @@ async function handleAdminQuery(request: Request) {
     });
 
   } catch (error) {
-    console.error("Error en handleAdminQuery:", error);
+    logger.error("Error en handleAdminQuery", { error });
     return json({
       success: false,
       error: "Error interno del servidor",
@@ -377,7 +378,7 @@ export async function action({ request }: ActionFunctionArgs) {
         }, { status: 400 });
     }
   } catch (error) {
-    console.error("Error en WhatsApp action:", error);
+    logger.error("Error en WhatsApp action", { error });
     return json({
       success: false,
       error: "Error interno del servidor",

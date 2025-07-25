@@ -312,7 +312,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           message: "Estado del ticket actualizado",
         });
       } catch (error) {
-        console.error("💥 Error al actualizar ticket:", error);
+        logger.error("Error al actualizar ticket", { error });
         return json({
           success: false,
           error: "Error al actualizar el ticket",

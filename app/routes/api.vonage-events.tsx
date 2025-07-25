@@ -2,13 +2,14 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
+import { logger } from "../utils/logger.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
     const eventData = await request.json();
     const { status, uuid: callUuid, timestamp } = eventData;
 
-    console.log("📊 Call event received:", { status, callUuid, timestamp });
+    logger.info("Call event received", { status, callUuid, timestamp });
 
     if (!status || !callUuid) {
       return json({ message: "Event ignored - missing data" }, { status: 200 });
@@ -42,7 +43,7 @@ export async function action({ request }: ActionFunctionArgs) {
     ];
 
     if (finalStates.includes(status)) {
-      await db.orderConfirmation.updateMany({
+      const result = await db.orderConfirmation.updateMany({
         where: {
           vonage_call_uuid: callUuid,
         },
@@ -53,15 +54,16 @@ export async function action({ request }: ActionFunctionArgs) {
         },
       });
 
-      console.log("✅ Call status updated:", {
+      logger.info("Call status updated", {
         callUuid,
         status: mappedStatus,
+        updatedRecords: result.count
       });
     }
 
     return json({ message: "Event processed" }, { status: 200 });
   } catch (error) {
-    console.error("❌ Error processing call event:", error);
+    logger.error("Error processing call event", { error });
     return json({ error: "Internal server error" }, { status: 500 });
   }
 }

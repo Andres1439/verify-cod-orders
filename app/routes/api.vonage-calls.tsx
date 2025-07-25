@@ -4,6 +4,7 @@ import { json } from "@remix-run/node";
 import { formatPhoneNumber } from "../utils/common-utils";
 import db from "../db.server";
 import crypto from "crypto";
+import { logger } from "../utils/logger.server";
 
 // 🔐 Configuración de Vonage
 const VONAGE_CONFIG = {
@@ -88,12 +89,12 @@ function generateVonageJWT(): string {
     
     const jwt = `${dataToSign}.${base64UrlSignature}`;
     
-    console.log('✅ JWT generado exitosamente para Vonage');
+    logger.info('JWT generado exitosamente para Vonage');
     return jwt;
     
   } catch (error) {
-    console.error('❌ Error generando JWT:', {
-      error: error instanceof Error ? error.message : 'Error desconocido',
+    logger.error('Error generando JWT', {
+      error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined
     });
     throw error; // Re-throw para que se maneje arriba
@@ -109,7 +110,7 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ error: 'Order ID is required' }, { status: 400 });
     }
     
-    console.log(`🔄 Procesando pedido: ${orderId}`);
+    logger.info(`Procesando pedido: ${orderId}`);
     
     // 1. Obtener datos del pedido
     const order = await db.orderConfirmation.findFirst({
@@ -123,11 +124,11 @@ export async function action({ request }: ActionFunctionArgs) {
     });
     
     if (!order) {
-      console.log(`❌ Pedido no encontrado: ${orderId}`);
+      logger.warn(`Pedido no encontrado: ${orderId}`);
       return json({ error: 'Order not found or not pending call' }, { status: 404 });
     }
     
-    console.log(`✅ Pedido encontrado: ${order.internal_order_number}`);
+    logger.info(`Pedido encontrado: ${order.internal_order_number}`);
     
     // 2. Parsear datos del pedido
     const shippingAddress = typeof order.shipping_address === "string"
@@ -137,10 +138,10 @@ export async function action({ request }: ActionFunctionArgs) {
     
     // 3. Formatear número de teléfono
     const formattedPhone = formatPhoneNumber(order.customer_phone, country);
-    console.log(`📞 Número formateado: ${formattedPhone}`);
+
     
     // 4. Generar JWT
-    console.log('🔐 Generando JWT...');
+
     const jwt = generateVonageJWT();
     
     // 5. Configurar llamada para Vonage
@@ -153,13 +154,29 @@ export async function action({ request }: ActionFunctionArgs) {
         type: "phone",
         number: VONAGE_CONFIG.FROM_NUMBER
       },
-      answer_url: [`${process.env.APP_URL}/api/vonage-answer?orderId=${orderId}`],
-      event_url: [`${process.env.APP_URL}/api/vonage-events`],
-      machine_detection: "continue"
+      answer_url: [`${process.env.APP_URL?.replace(/\/$/, '')}/api/vonage-answer?orderId=${orderId}`],
+      event_url: [`${process.env.APP_URL?.replace(/\/$/, '')}/api/vonage-events`],
+      fallback_url: [`${process.env.APP_URL?.replace(/\/$/, '')}/api/vonage-answer?orderId=${orderId}&fallback=true`],
+      // machine_detection: "hangup", // Desactivar completamente machine detection
+      length_timer: 300, // 5 minutos máximo
+      ringing_timer: 30 // 30 segundos de timbre
     };
     
-    console.log('📡 Enviando llamada a Vonage API...');
-    console.log('Payload:', JSON.stringify(callPayload, null, 2));
+    // Validar URLs antes de enviar
+    const baseUrl = process.env.APP_URL?.replace(/\/$/, '') || '';
+
+    
+    // Verificar que no hay doble slash en las URLs
+    callPayload.answer_url.forEach(url => {
+      if (url.includes('//api/')) {
+
+      }
+    });
+    callPayload.event_url.forEach(url => {
+      if (url.includes('//api/')) {
+
+      }
+    });
     
     // 6. Realizar llamada a Vonage
     const response = await fetch(VONAGE_CONFIG.API_URL, {
@@ -173,14 +190,10 @@ export async function action({ request }: ActionFunctionArgs) {
     });
     
     const responseText = await response.text();
-    console.log(`📊 Respuesta de Vonage (${response.status}):`, responseText);
+
     
     if (!response.ok) {
-      console.error('❌ Error de Vonage API:', {
-        status: response.status,
-        statusText: response.statusText,
-        body: responseText
-      });
+
       return json({ 
         error: 'Failed to initiate call',
         details: `Vonage API error: ${response.status} - ${responseText}`
@@ -191,14 +204,14 @@ export async function action({ request }: ActionFunctionArgs) {
     try {
       callData = JSON.parse(responseText);
     } catch (parseError) {
-      console.error('❌ Error parseando respuesta de Vonage:', parseError);
+
       return json({ 
         error: 'Invalid response from Vonage API',
         details: responseText
       }, { status: 500 });
     }
     
-    console.log('✅ Llamada iniciada exitosamente:', callData);
+
     
     // 7. Actualizar base de datos
     await db.orderConfirmation.update({
@@ -211,7 +224,7 @@ export async function action({ request }: ActionFunctionArgs) {
       }
     });
     
-    console.log('✅ Base de datos actualizada');
+
     
     return json({
       success: true,
@@ -223,10 +236,7 @@ export async function action({ request }: ActionFunctionArgs) {
     });
     
   } catch (error) {
-    console.error('❌ Error en la iniciación de llamada:', {
-      error: error instanceof Error ? error.message : 'Error desconocido',
-      stack: error instanceof Error ? error.stack : undefined
-    });
+
     
     return json({ 
       error: 'Internal server error',
@@ -241,7 +251,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const url = new URL(request.url);
     const limit = parseInt(url.searchParams.get('limit') || '10');
     
-    console.log(`📋 Buscando pedidos pendientes (límite: ${limit})`);
+
     
     const pendingOrders = await db.orderConfirmation.findMany({
       where: {
@@ -260,22 +270,64 @@ export async function loader({ request }: LoaderFunctionArgs) {
       take: limit
     });
     
-    console.log(`📊 Encontrados ${pendingOrders.length} pedidos pendientes`);
+
     
-    // Para N8N, devolver los items directamente
-    const orders = pendingOrders.map(order => ({
-      id: order.id,
-      customer_phone: order.customer_phone,
-      shop_domain: order.shop?.shop_domain,
-      order_total: order.order_total,
-      internal_order_number: order.internal_order_number,
-      created_at: order.created_at
-    }));
+    // Para N8N, devolver los items con información completa
+    const orders = pendingOrders.map(order => {
+      // Procesar productos
+      let products: Array<{title: string, quantity: number, price: number}> = [];
+      if (order.order_items) {
+        try {
+          const items = typeof order.order_items === 'string' 
+            ? JSON.parse(order.order_items) 
+            : order.order_items;
+          if (Array.isArray(items)) {
+            products = items.map(item => ({
+              title: item.title || item.name || 'Producto',
+              quantity: item.quantity || 1,
+              price: item.price || 0
+            }));
+          }
+        } catch (error) {
+
+        }
+      }
+      
+      // Procesar dirección
+      let shipping_address = null;
+      if (order.shipping_address) {
+        try {
+          shipping_address = typeof order.shipping_address === 'string'
+            ? JSON.parse(order.shipping_address)
+            : order.shipping_address;
+        } catch (error) {
+
+        }
+      }
+      
+      return {
+        id: order.id,
+        customer_phone: order.customer_phone,
+        customer_name: order.customer_name,
+        customer_email: order.customer_email,
+        shop_domain: order.shop?.shop_domain,
+        order_total: order.order_total,
+        shop_currency: order.shop_currency,
+        internal_order_number: order.internal_order_number,
+        shopify_order_name: order.shopify_order_name,
+        products: products,
+        shipping_address: shipping_address,
+        created_at: order.created_at,
+        // Información adicional útil para N8N
+        call_status: order.call_status,
+        vonage_call_uuid: order.vonage_call_uuid
+      };
+    });
 
     return json(orders);
     
   } catch (error) {
-    console.error('❌ Error obteniendo pedidos pendientes:', error);
+
     return json({ error: 'Failed to fetch orders' }, { status: 500 });
   }
 }

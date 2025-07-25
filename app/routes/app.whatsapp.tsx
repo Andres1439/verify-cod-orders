@@ -19,6 +19,7 @@ import {
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { logger } from "../utils/logger.server";
 
 // Tipos específicos para evitar errores de TypeScript
 interface ShopData {
@@ -97,7 +98,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return json(responseData);
   } catch (error) {
     if (error instanceof Response) throw error;
-    console.error("❌ Error cargando datos WhatsApp:", error);
+    logger.error("Error cargando datos WhatsApp", { error });
     throw new Error("Error cargando datos de WhatsApp");
   }
 }
@@ -186,7 +187,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
     throw new Error("Acción no válida");
   } catch (error) {
-    console.error("Error en action WhatsApp:", error);
+    logger.error("Error en action WhatsApp", { error });
     throw new Error(error instanceof Error ? error.message : "Error interno del servidor");
   }
 }

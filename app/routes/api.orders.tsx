@@ -49,6 +49,14 @@ interface DBLineItem {
   [key: string]: any;
 }
 
+// ✅ NUEVA INTERFACE PARA MÚLTIPLES PRODUCTOS EN REQUEST
+interface ProductItem {
+  product_name: string;
+  variant_id: string;
+  price: string;
+  quantity: number;
+}
+
 interface ShopifyOrderResult {
   success: boolean;
   order?: {
@@ -80,7 +88,7 @@ interface CreateShopifyOrderParams {
   lineItems: ShopifyLineItem[];
   currency?: string;
   note?: string;
-  itemPrice: number;
+  totalPrice: number;  // ✅ CAMBIO: totalPrice en lugar de itemPrice
   requestId: string;
 }
 
@@ -329,21 +337,41 @@ function validateEssentialOrderData(data: any, countryCode: string) {
     );
   }
 
-  // ✅ CAMPOS OBLIGATORIOS PARA EL PRODUCTO
-  if (!data.product_name || data.product_name.trim() === "") {
-    errors.push("Nombre del producto es requerido");
-  }
-
-  if (!data.variant_id || data.variant_id.trim() === "") {
-    errors.push("ID del producto (variant_id) es requerido");
-  }
-
-  if (!data.price || cleanPrice(data.price) <= 0) {
-    errors.push("Precio del producto debe ser mayor a 0");
-  }
-
-  if (!data.quantity || parseInt(data.quantity) <= 0) {
-    errors.push("Cantidad debe ser mayor a 0");
+  // ✅ VALIDACIÓN DE PRODUCTOS - SOPORTE PARA AMBOS FORMATOS
+  if (data.products && Array.isArray(data.products)) {
+    // ✅ FORMATO NUEVO: Array de productos
+    if (data.products.length === 0) {
+      errors.push("Al menos un producto es requerido");
+    } else {
+      data.products.forEach((product: any, index: number) => {
+        if (!product.product_name || product.product_name.trim() === "") {
+          errors.push(`Producto ${index + 1}: Nombre del producto es requerido`);
+        }
+        if (!product.variant_id || product.variant_id.trim() === "") {
+          errors.push(`Producto ${index + 1}: ID del producto (variant_id) es requerido`);
+        }
+        if (!product.price || cleanPrice(product.price) <= 0) {
+          errors.push(`Producto ${index + 1}: Precio del producto debe ser mayor a 0`);
+        }
+        if (!product.quantity || parseInt(product.quantity) <= 0) {
+          errors.push(`Producto ${index + 1}: Cantidad debe ser mayor a 0`);
+        }
+      });
+    }
+  } else {
+    // ✅ FORMATO ANTERIOR: Un solo producto
+    if (!data.product_name || data.product_name.trim() === "") {
+      errors.push("Nombre del producto es requerido");
+    }
+    if (!data.variant_id || data.variant_id.trim() === "") {
+      errors.push("ID del producto (variant_id) es requerido");
+    }
+    if (!data.price || cleanPrice(data.price) <= 0) {
+      errors.push("Precio del producto debe ser mayor a 0");
+    }
+    if (!data.quantity || parseInt(data.quantity) <= 0) {
+      errors.push("Cantidad debe ser mayor a 0");
+    }
   }
 
   return errors;
@@ -576,7 +604,97 @@ function addCountryCodeToPhone(phone: string, countryCode: string): string {
   return `+${phoneCountryCode}${cleanPhone}`;
 }
 
-// ✅ NUEVA FUNCIÓN: Crear o actualizar customer en Shopify
+// ✅ NUEVA FUNCIÓN: Solo buscar customer existente SIN modificar
+async function findExistingCustomer(
+  shopDomain: string,
+  accessToken: string,
+  customerData: ShopifyCustomerData,
+  requestId: string
+): Promise<{ success: boolean; customerId?: string; customer?: any; error?: string }> {
+  try {
+    // Buscar customer existente por email
+    let existingCustomer = null;
+    if (customerData.email) {
+      const searchResponse = await fetch(
+        `https://${shopDomain}/admin/api/2025-04/customers/search.json?query=email:${encodeURIComponent(customerData.email)}`,
+        {
+          method: "GET",
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (searchResponse.ok) {
+        const searchResult = await searchResponse.json();
+        if (searchResult.customers && searchResult.customers.length > 0) {
+          existingCustomer = searchResult.customers[0];
+        }
+      }
+    }
+
+    // Si no se encuentra por email, buscar por teléfono
+    if (!existingCustomer && customerData.phone) {
+      const phoneSearchResponse = await fetch(
+        `https://${shopDomain}/admin/api/2025-04/customers/search.json?query=phone:${encodeURIComponent(customerData.phone)}`,
+        {
+          method: "GET",
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (phoneSearchResponse.ok) {
+        const phoneSearchResult = await phoneSearchResponse.json();
+        if (phoneSearchResult.customers && phoneSearchResult.customers.length > 0) {
+          existingCustomer = phoneSearchResult.customers[0];
+        }
+      }
+    }
+
+    if (existingCustomer) {
+      logger.info("Customer existente encontrado (NO se modificará):", {
+        requestId,
+        customerId: existingCustomer.id,
+        email: existingCustomer.email,
+        phone: existingCustomer.phone,
+      });
+
+      return {
+        success: true,
+        customerId: existingCustomer.id.toString(),
+        customer: existingCustomer
+      };
+    } else {
+      logger.info("Customer no encontrado, se usarán datos proporcionados:", {
+        requestId,
+        email: customerData.email,
+        phone: customerData.phone,
+      });
+
+      return {
+        success: true,
+        customerId: undefined, // No hay customer existente
+        customer: undefined
+      };
+    }
+
+  } catch (error) {
+    logger.error("Error buscando customer existente:", {
+      requestId,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error"
+    };
+  }
+}
+
+// ✅ FUNCIÓN ORIGINAL: Crear o actualizar customer en Shopify (MANTENER PARA OTROS USOS)
 async function createOrUpdateCustomer(
   shopDomain: string,
   accessToken: string,
@@ -706,21 +824,21 @@ async function createShopifyOrder({
   lineItems,
   currency = "USD",
   note = "",
-  itemPrice,
+  totalPrice,
   requestId,
 }: CreateShopifyOrderParams): Promise<ShopifyOrderResult> {
   try {
-    logger.info("Creando orden con datos únicos", {
+    logger.info("Creando orden con múltiples productos", {
       shopDomain,
       requestId,
       customerEmail: customerData.email,
-      productVariant: lineItems[0]?.variantId,
-      itemPrice: itemPrice,
+      lineItemsCount: lineItems.length,
+      totalPrice: totalPrice,
       timestamp: Date.now(),
     });
 
-    // ✅ PASO 1: Crear o actualizar customer primero
-    const customerResult = await createOrUpdateCustomer(
+    // ✅ PASO 1: Buscar customer existente SIN modificarlo
+    const customerResult = await findExistingCustomer(
       shopDomain,
       accessToken,
       customerData,
@@ -728,7 +846,7 @@ async function createShopifyOrder({
     );
 
     if (!customerResult.success) {
-      logger.error("Error creando/actualizando customer:", {
+      logger.error("Error buscando customer existente:", {
         requestId,
         error: customerResult.error,
       });
@@ -804,7 +922,8 @@ async function createShopifyOrder({
         line_items: lineItems.map((item) => ({
           variant_id: item.variantId,
           quantity: item.quantity,
-          price: decimalToString(itemPrice), // ✅ PRECIO EXPLÍCITO con helper
+          // ✅ PRECIO INDIVIDUAL POR PRODUCTO - cada item tiene su precio
+          price: item.customAttributes.find(attr => attr.key === "item_price")?.value || "0",
           custom_attributes: [
             ...item.customAttributes,
             {
@@ -929,11 +1048,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       email,
       phone,
       address1,
+      products, // ✅ NUEVO: Array de productos
+      // ✅ MANTENER COMPATIBILIDAD CON FORMATO ANTERIOR (UN SOLO PRODUCTO)
       product_name,
       price,
       quantity,
       variant_id: rawVariantId,
     } = body;
+
+    // ✅ DETERMINAR SI ES FORMATO MÚLTIPLE O ÚNICO
+    const isMultipleProducts = Array.isArray(products) && products.length > 0;
+    
+    // ✅ CONVERTIR A FORMATO ESTÁNDAR DE MÚLTIPLES PRODUCTOS
+    const productItems: ProductItem[] = isMultipleProducts 
+      ? products.map((product: any) => ({
+          product_name: product.product_name || product.name,
+          variant_id: product.variant_id,
+          price: product.price,
+          quantity: product.quantity || 1,
+        }))
+      : [{
+          product_name,
+          variant_id: rawVariantId,
+          price,
+          quantity: quantity || 1,
+        }];
 
     // ✅ CAMPOS FIJOS VACÍOS SEGÚN REQUERIMIENTO
     const last_name = "";
@@ -951,53 +1090,79 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return variantId;
     }
 
-    const variant_id = extractVariantId(rawVariantId);
+    // ✅ PROCESAR VARIANT_IDS PARA TODOS LOS PRODUCTOS
+    const processedProductItems = productItems.map(item => ({
+      ...item,
+      variant_id: extractVariantId(item.variant_id),
+    }));
 
-    logger.info("=== NUEVA PETICIÓN DE ORDEN ===", {
+    logger.info("=== NUEVA PETICIÓN DE ORDEN MÚLTIPLE ===", {
       requestId,
       shopDomain,
+      isMultipleProducts,
+      productCount: processedProductItems.length,
       timestamp: Date.now(),
     });
 
-    logger.info("Datos recibidos:", {
+    logger.info("Productos recibidos:", {
       requestId,
       phone,
-      product_name,
-      price,
-      original_variant_id: rawVariantId,
-      processed_variant_id: variant_id,
-      quantity,
+      products: processedProductItems.map(item => ({
+        name: item.product_name,
+        price: item.price,
+        quantity: item.quantity,
+        variant_id: item.variant_id,
+      })),
       has_name: !!first_name,
       has_email: !!email,
       has_address: !!address1,
       original_email: email,
     });
 
-    // ✅ LIMPIAR PRECIO ANTES DE VALIDAR
-    const cleanedPrice = cleanPrice(price);
-    const itemPrice = cleanedPrice;
-    const itemQuantity = parseInt(quantity) || 1;
-    const orderTotal = itemPrice * itemQuantity;
+    // ✅ CALCULAR TOTAL DESDE PRODUCTOS PROCESADOS
+    let orderTotal = 0;
+    const processedPrices = [];
+    
+    for (const item of processedProductItems) {
+      const cleanedPrice = cleanPrice(item.price);
+      const itemQuantity = item.quantity || 1;
+      const itemTotal = cleanedPrice * itemQuantity;
+      
+      // ✅ VALIDAR QUE CADA PRECIO SEA VÁLIDO
+      if (cleanedPrice <= 0) {
+        logger.error("Precio inválido en producto:", {
+          productName: item.product_name,
+          originalPrice: item.price,
+          cleanedPrice: cleanedPrice,
+          requestId,
+        });
 
-    // ✅ VALIDAR QUE EL PRECIO SEA VÁLIDO
-    if (itemPrice <= 0) {
-      logger.error("Precio inválido después de limpiar:", {
-        originalPrice: price,
-        cleanedPrice: itemPrice,
-        requestId,
+        return json(
+          {
+            error: "Precio del producto inválido",
+            details: [
+              `Producto: ${item.product_name}, Precio original: ${item.price}, Precio procesado: ${cleanedPrice}`,
+            ],
+            code: "INVALID_PRICE",
+          },
+          { status: 400, headers },
+        );
+      }
+      
+      orderTotal += itemTotal;
+      processedPrices.push({
+        product: item.product_name,
+        unitPrice: cleanedPrice,
+        quantity: itemQuantity,
+        totalPrice: itemTotal
       });
-
-      return json(
-        {
-          error: "Precio del producto inválido",
-          details: [
-            `Precio original: ${price}, Precio procesado: ${itemPrice}`,
-          ],
-          code: "INVALID_PRICE",
-        },
-        { status: 400, headers },
-      );
     }
+
+    logger.info("Precios calculados correctamente:", {
+      requestId,
+      orderTotal,
+      processedPrices
+    });
 
     const shop = await db.shop.findUnique({
       where: { shop_domain: shopDomain },
@@ -1045,21 +1210,39 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // ✅ 2. SEGUNDO: VALIDAR CAMPOS ESENCIALES (NOMBRE, CONTACTO, DIRECCIÓN, CORREO)
     const basicErrors = validateEssentialOrderData(body, countryCode);
     const securityErrors = validateNoDefaultValues(body);
+    
+    // ✅ VALIDAR CADA PRODUCTO INDIVIDUALMENTE
+    const productErrors: string[] = [];
+    
+    for (let i = 0; i < processedProductItems.length; i++) {
+      const product = processedProductItems[i];
+      
+      if (!product.product_name || product.product_name.trim() === "") {
+        productErrors.push(`Producto ${i + 1}: Nombre del producto es requerido`);
+      }
+      
+      if (!product.variant_id || product.variant_id.trim() === "") {
+        productErrors.push(`Producto ${i + 1}: ID de variante es requerido`);
+      }
+      
+      if (!product.price || isNaN(parseFloat(product.price))) {
+        productErrors.push(`Producto ${i + 1}: Precio válido es requerido`);
+      }
+      
+      if (!product.quantity || product.quantity < 1) {
+        productErrors.push(`Producto ${i + 1}: Cantidad debe ser mayor a 0`);
+      }
+    }
 
-    const allErrors = [...basicErrors, ...securityErrors];
+    const allErrors = [...basicErrors, ...securityErrors, ...productErrors];
 
     if (allErrors.length > 0) {
       logger.error("Validación de seguridad falló:", {
         errors: allErrors,
         requestId,
         countryCode: countryCode,
-        receivedData: {
-          phone: body.phone,
-          product_name: body.product_name,
-          variant_id: body.variant_id,
-          price: body.price,
-          quantity: body.quantity,
-        },
+        productCount: processedProductItems.length,
+        receivedProducts: processedProductItems,
       });
 
       return json(
@@ -1180,7 +1363,78 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const hasRealCountry = true; // Siempre verdadero, automático desde tienda
     const hasRealZip = false; // Siempre falso, campo fijo vacío
 
-    // ✅ PREPARAR DATOS PARA SHOPIFY - USAR CAMPOS VACÍOS SI NO HAY DATOS
+    // ✅ PROCESAR MÚLTIPLES PRODUCTOS - VALIDAR Y CALCULAR TOTALES
+    const processedProducts: Array<{
+      product_name: string;
+      variant_id: string;
+      itemPrice: number;
+      quantity: number;
+      totalPrice: number;
+      variantCheck: { exists: boolean; price?: number; title?: string };
+    }> = [];
+    
+    let orderTotalPrice = 0;
+    
+    // ✅ VALIDAR Y PROCESAR CADA PRODUCTO
+    for (let i = 0; i < processedProductItems.length; i++) {
+      const product = processedProductItems[i];
+      
+      // Limpiar y validar precio
+      const itemPrice = cleanPrice(product.price);
+      const quantity = parseInt(product.quantity.toString()) || 1;
+      const productTotal = itemPrice * quantity;
+      
+      // Verificar que el variant existe en Shopify
+      const variantCheck = await verifyVariantExists(
+        shop.shop_domain,
+        realAccessToken,
+        product.variant_id,
+      );
+      
+      if (!variantCheck.exists) {
+        logger.error(`Producto ${i + 1}: Variant no existe en Shopify`, {
+          variantId: product.variant_id,
+          productName: product.product_name,
+          shopDomain: shop.shop_domain,
+          requestId,
+        });
+        
+        return json(
+          {
+            error: `Producto "${product.product_name}": Variant no encontrado en Shopify`,
+            code: "VARIANT_NOT_FOUND",
+            productIndex: i + 1,
+            variantId: product.variant_id,
+          },
+          { status: 400, headers },
+        );
+      }
+      
+      processedProducts.push({
+        product_name: product.product_name,
+        variant_id: product.variant_id,
+        itemPrice,
+        quantity,
+        totalPrice: productTotal,
+        variantCheck,
+      });
+      
+      orderTotalPrice += productTotal;
+    }
+
+    logger.info("Productos procesados:", {
+      requestId,
+      productCount: processedProducts.length,
+      products: processedProducts.map(p => ({
+        name: p.product_name,
+        price: p.itemPrice,
+        quantity: p.quantity,
+        total: p.totalPrice,
+      })),
+      orderTotal: orderTotalPrice,
+    });
+
+    // ✅ CUSTOMER: USAR CAMPOS VACÍOS SI NO SE PROPORCIONARON
     const customerData: ShopifyCustomerData = {
       firstName: finalFirstName || "", // ✅ VACÍO si no se proporcionó
       lastName: finalLastName || "",   // ✅ VACÍO si no se proporcionó
@@ -1200,54 +1454,63 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       phone: phoneWithCountryCode,
     };
 
-    const lineItems: DBLineItem[] = [
-      {
-        title: product_name,
-        price: itemPrice.toString(),
-        quantity: itemQuantity,
-        variantId: variant_id,
-        requiresShipping: true,
-        taxable: true,
-      },
-    ];
+    // ✅ CREAR LINE ITEMS PARA SHOPIFY CON MÚLTIPLES PRODUCTOS
+    const lineItems: ShopifyLineItem[] = processedProducts.map(product => ({
+      variantId: product.variant_id,
+      quantity: product.quantity,
+      customAttributes: [
+        {
+          key: "source",
+          value: "chatbot",
+        },
+        {
+          key: "internal_order_number",
+          value: internalOrderNumber,
+        },
+        {
+          key: "request_id",
+          value: requestId,
+        },
+        {
+          key: "item_price", // ✅ PRECIO INDIVIDUAL DEL PRODUCTO
+          value: decimalToString(product.itemPrice),
+        },
+      ],
+    }));
 
     logger.info("Iniciando creación de orden en Shopify...", { requestId });
 
-    // ✅ VERIFICAR VARIANT ANTES DE CREAR ORDEN
-    const variantCheck = await verifyVariantExists(
-      shop.shop_domain,
-      realAccessToken,
-      variant_id,
-    );
+    // ✅ CREAR ORDEN EN SHOPIFY CON MÚLTIPLES PRODUCTOS
+    const shopifyResult = await createShopifyOrder({
+      shopDomain: shop.shop_domain,
+      accessToken: realAccessToken,
+      customerData,
+      shippingAddress,
+      lineItems,
+      currency: currency, // ✅ USAR MONEDA DE LA TIENDA
+      note: "chatbot",
+      totalPrice: orderTotalPrice, // ✅ USAR PRECIO TOTAL DE TODOS LOS PRODUCTOS
+      requestId: requestId,
+    });
 
-    if (!variantCheck.exists) {
-      logger.error("Variant no existe en Shopify", {
-        variantId: variant_id,
-        shopDomain: shop.shop_domain,
+    if (!shopifyResult.success || !shopifyResult.order) {
+      logger.error("Error al crear orden en Shopify:", {
         requestId,
+        error: shopifyResult.error,
+        productCount: processedProducts.length,
+        orderTotal: orderTotalPrice,
       });
 
       return json(
         {
           success: false,
-          error: `El producto con ID ${variant_id} no existe en la tienda`,
-          details: "Por favor, verifica que el producto esté disponible",
-          code: "VARIANT_NOT_FOUND",
+          error: "Error al crear la orden en Shopify",
+          details: shopifyResult.error,
+          code: "SHOPIFY_ORDER_CREATION_FAILED",
         },
-        { status: 400, headers },
+        { status: 500, headers },
       );
     }
-
-    // ✅ USAR PRECIO DE SHOPIFY SI ESTÁ DISPONIBLE
-    const finalPrice = variantCheck.price || itemPrice;
-
-    logger.info("Variant verificado exitosamente", {
-      variantId: variant_id,
-      shopifyPrice: variantCheck.price,
-      providedPrice: itemPrice,
-      finalPrice: finalPrice,
-      title: variantCheck.title,
-    });
 
     const rateLimitResult = await RateLimiter.checkLimit(
       shopDomain,
@@ -1263,52 +1526,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     await new Promise((resolve) => setTimeout(resolve, 100));
-
-    const shopifyResult = await createShopifyOrder({
-      shopDomain: shop.shop_domain,
-      accessToken: realAccessToken,
-      customerData,
-      shippingAddress,
-      lineItems: [
-        {
-          variantId: variant_id,
-          quantity: itemQuantity,
-          customAttributes: [
-            {
-              key: "source",
-              value: "chatbot",
-            },
-            {
-              key: "internal_order_number",
-              value: internalOrderNumber,
-            },
-            {
-              key: "request_id",
-              value: requestId,
-            },
-          ],
-        },
-      ],
-      currency: currency, // ✅ USAR MONEDA DE LA TIENDA
-      note: "chatbot",
-      itemPrice: finalPrice, // ✅ USAR PRECIO VERIFICADO
-      requestId: requestId,
-    });
-
-    if (!shopifyResult.success || !shopifyResult.order) {
-      logger.error("Error al crear orden en Shopify:", {
-        requestId,
-        error: shopifyResult.error,
-      });
-      return json(
-        {
-          success: false,
-          error: "No se pudo crear la orden en Shopify",
-          details: shopifyResult.error || "Respuesta de Shopify inválida",
-        },
-        { status: 500, headers },
-      );
-    }
 
     logger.info("Orden creada exitosamente en Shopify:", {
       requestId,
@@ -1463,14 +1680,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           autoDetectedCountry: true,
         },
 
-        items: [
-          {
-            title: product_name,
-            quantity: itemQuantity,
-            price: decimalToString(finalPrice),
-            variantId: variant_id,
-          },
-        ],
+        items: processedProducts.map(product => ({
+          title: product.product_name,
+          quantity: product.quantity,
+          price: decimalToString(product.itemPrice),
+          totalPrice: decimalToString(product.totalPrice),
+          variantId: product.variant_id,
+        })),
+        
+        // ✅ INFORMACIÓN DE ORDEN TOTAL
+        orderSummary: {
+          totalProducts: processedProducts.length,
+          totalPrice: decimalToString(orderTotalPrice),
+          currency: currency,
+        },
 
         nextSteps: {
           message:
@@ -1513,10 +1736,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             },
           },
           price_info: {
-            original_price: price,
-            cleaned_price: itemPrice,
-            shopify_price: variantCheck.price,
-            final_price: finalPrice,
+            total_order_price: decimalToString(orderTotalPrice),
+            products_processed: processedProducts.length,
+            individual_products: processedProducts.map(product => ({
+              product_name: product.product_name,
+              cleaned_price: decimalToString(product.itemPrice),
+              total_price: decimalToString(product.totalPrice),
+              quantity: product.quantity,
+              variant_id: product.variant_id
+            })),
           },
         },
       },

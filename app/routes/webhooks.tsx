@@ -10,6 +10,19 @@ import { logger } from "../utils/logger.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   try {
+    // Log de información de la request para debugging
+    const url = new URL(request.url);
+    const userAgent = request.headers.get('User-Agent') || 'unknown';
+    const hmacHeader = request.headers.get('X-Shopify-Hmac-Sha256');
+    
+    logger.info("Webhook recibido", {
+      url: url.pathname,
+      method: request.method,
+      userAgent,
+      hasHmac: !!hmacHeader,
+      contentType: request.headers.get('Content-Type')
+    });
+
     // `authenticate.webhook` valida la petición y devuelve el tópico, tienda y payload
     // Si la verificación HMAC falla, esto lanzará un error que será capturado
     const { topic, shop, payload, admin } = await authenticate.webhook(request);
@@ -54,7 +67,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 shop: { shop_domain: shop },
                 ...whereClauseForOrders,
               },
-              include: { call: true },
             }),
           ]);
 
@@ -252,11 +264,37 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Responde siempre con un 200 OK para que Shopify sepa que recibiste el webhook.
     return new Response(null, { status: 200 });
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    // Detectar si es un error de autenticación HMAC
+    const isAuthError = errorMessage.includes('HMAC') || 
+                       errorMessage.includes('authentication') ||
+                       errorMessage.includes('signature') ||
+                       errorMessage.includes('webhook validation');
+    
     logger.error("Error en webhook", {
-      error: error instanceof Error ? error.message : "Unknown error",
-      stack: error instanceof Error ? error.stack : undefined,
+      error: errorMessage,
+      stack: errorStack,
+      isAuthError,
+      url: new URL(request.url).pathname,
+      method: request.method
     });
-    // Devuelve 401 para cualquier error en la autenticación del webhook
-    return new Response(null, { status: 401 });
+    
+    // Devuelve 401 para errores de autenticación, 500 para otros errores
+    const statusCode = isAuthError ? 401 : 500;
+    logger.error(`Respondiendo con HTTP ${statusCode}`, { 
+      reason: isAuthError ? 'HMAC validation failed' : 'Internal server error' 
+    });
+    
+    return new Response(JSON.stringify({ 
+      error: isAuthError ? 'Webhook authentication failed' : 'Internal server error',
+      timestamp: new Date().toISOString()
+    }), { 
+      status: statusCode,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
   }
 };

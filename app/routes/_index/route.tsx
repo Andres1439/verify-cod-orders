@@ -1,10 +1,30 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { Form, useLoaderData } from "@remix-run/react";
 
 import { login } from "../../shopify.server";
 
 import styles from "./styles.module.css";
+
+// ===== META FUNCTION PARA SEO =====
+export const meta: MetaFunction = () => {
+  return [
+    { title: "Verify COD Orders - Optimiza tus pedidos COD con IA" },
+    { 
+      name: "description", 
+      content: "Reduce devoluciones hasta 40% con nuestra solución de IA para pedidos Contra Entrega. Automatiza procesos y mejora la experiencia de tus clientes en Shopify." 
+    },
+    { name: "keywords", content: "COD, contra entrega, Shopify, inteligencia artificial, automatización, devoluciones" },
+    { name: "robots", content: "index, follow" },
+    { property: "og:title", content: "Verify COD Orders - Optimiza tus pedidos COD con IA" },
+    { property: "og:description", content: "Reduce devoluciones hasta 40% con nuestra solución de IA para pedidos Contra Entrega." },
+    { property: "og:type", content: "website" },
+    { property: "og:url", content: "https://cod-orders.fly.dev" },
+    { name: "twitter:card", content: "summary_large_image" },
+    { name: "viewport", content: "width=device-width, initial-scale=1" },
+    { name: "theme-color", content: "#00A96E" }
+  ];
+};
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
