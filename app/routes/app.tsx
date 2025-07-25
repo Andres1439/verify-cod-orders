@@ -42,6 +42,7 @@ export default function App() {
           </Link>
           <Link to="/app/chatbot">Chatbot</Link>
           <Link to="/app/whatsapp">WhatsApp</Link>
+          <Link to="/app/call-monitoring">Monitoreo Llamadas</Link>
           <Link to="/app/contact">Contacto</Link>
         </NavMenu>
 

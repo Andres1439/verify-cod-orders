@@ -540,7 +540,7 @@ export default function ChatbotPage() {
   return (
     <div style={{ marginBottom: "2rem" }}>
       <Page
-        title="Chatbot AI"
+        title="💬 Chatbot AI"
         subtitle="Configuración y análisis de tu asistente virtual"
       >
         <TitleBar title="Chatbot AI" />

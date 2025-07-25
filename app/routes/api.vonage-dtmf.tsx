@@ -1,4 +1,4 @@
-// app/routes/api.vonage-dtmf.tsx - VERSIÓN MEJORADA
+// app/routes/api.vonage-dtmf.tsx - VERSIÓN COMPLETA ACTUALIZADA
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import db from "../db.server";
@@ -90,7 +90,178 @@ async function updateShopifyOrderNote(callUuid: string, orderId: string | null) 
     logger.info(`Nota actualizada en Shopify para orden ${orderData.shopify_order_name}`, { note: result.data?.orderUpdate?.order?.note });
     
   } catch (error) {
-    logger.error(`Error actualizando nota en Shopify`, { error });
+    logger.error(`Error actualizando nota en Shopify`, { error, callUuid });
+  }
+}
+
+// 🏷️ FUNCIÓN PARA ACTUALIZAR ETIQUETAS EN SHOPIFY - VERSIÓN CORREGIDA 2025-04
+async function updateShopifyOrderTags(callUuid: string, newTag: string) {
+  try {
+    logger.info(`Actualizando etiqueta en Shopify: ${newTag} para call: ${callUuid}`);
+    
+    const orderData = await db.orderConfirmation.findFirst({
+      where: { vonage_call_uuid: callUuid },
+      include: { shop: true }
+    });
+    
+    if (!orderData || !orderData.shopify_order_id || !orderData.shop?.access_token) {
+      logger.warn(`Datos insuficientes para actualizar etiquetas en Shopify`, {
+        hasOrderData: !!orderData,
+        hasShopifyOrderId: !!orderData?.shopify_order_id,
+        hasAccessToken: !!orderData?.shop?.access_token,
+        callUuid
+      });
+      return;
+    }
+    
+    const shopifyOrderGid = `gid://shopify/Order/${orderData.shopify_order_id}`;
+    logger.info(`Procesando orden Shopify`, {
+      shopifyOrderGid,
+      shopDomain: orderData.shop.shop_domain,
+      orderName: orderData.shopify_order_name
+    });
+    
+    // PASO 1: Obtener etiquetas actuales usando API 2025-04
+    const getOrderQuery = `
+      query GetOrder($id: ID!) {
+        order(id: $id) {
+          id
+          tags
+        }
+      }
+    `;
+    
+    const getResponse = await fetch(`https://${orderData.shop.shop_domain}/admin/api/2025-04/graphql.json`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': orderData.shop.access_token
+      },
+      body: JSON.stringify({
+        query: getOrderQuery,
+        variables: { id: shopifyOrderGid }
+      })
+    });
+    
+    if (!getResponse.ok) {
+      logger.error(`Error HTTP obteniendo orden de Shopify`, {
+        status: getResponse.status,
+        statusText: getResponse.statusText,
+        shopifyOrderGid
+      });
+      return;
+    }
+    
+    const getResult = await getResponse.json();
+    
+    if (getResult.errors) {
+      logger.error(`Error GraphQL obteniendo orden de Shopify`, { 
+        errors: getResult.errors,
+        shopifyOrderGid 
+      });
+      return;
+    }
+    
+    // PASO 2: Limpiar etiquetas de llamadas previas y agregar la nueva
+    const currentTags = getResult.data?.order?.tags || [];
+    logger.info(`Etiquetas actuales en Shopify`, { currentTags, shopifyOrderGid });
+    
+    // Filtrar etiquetas relacionadas con llamadas (nuevos y viejos nombres)
+    const cleanTags = currentTags.filter((tag: string) => 
+      !tag.includes('cod-confirmado') && 
+      !tag.includes('cod-cancelado') && 
+      !tag.includes('cod-sin-respuesta') &&
+      !tag.includes('confirmado-por-llamada') &&
+      !tag.includes('cancelado-por-llamada') &&
+      !tag.includes('sin-respuesta-llamada')
+    );
+    
+    // Agregar la nueva etiqueta
+    const finalTags = [...cleanTags, newTag];
+    logger.info(`Etiquetas finales a aplicar`, { 
+      removed: currentTags.length - cleanTags.length,
+      finalTags,
+      newTag
+    });
+    
+    // PASO 3: Actualizar usando orderUpdate con API 2025-04
+    const updateMutation = `
+      mutation OrderUpdate($input: OrderInput!) {
+        orderUpdate(input: $input) {
+          order {
+            id
+            tags
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+    
+    const updateResponse = await fetch(`https://${orderData.shop.shop_domain}/admin/api/2025-04/graphql.json`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': orderData.shop.access_token
+      },
+      body: JSON.stringify({
+        query: updateMutation,
+        variables: {
+          input: {
+            id: shopifyOrderGid,
+            tags: finalTags
+          }
+        }
+      })
+    });
+    
+    if (!updateResponse.ok) {
+      logger.error(`Error HTTP actualizando etiquetas en Shopify`, {
+        status: updateResponse.status,
+        statusText: updateResponse.statusText,
+        shopifyOrderGid
+      });
+      return;
+    }
+    
+    const updateResult = await updateResponse.json();
+    
+    if (updateResult.errors) {
+      logger.error(`Error GraphQL actualizando etiquetas en Shopify`, { 
+        errors: updateResult.errors,
+        shopifyOrderGid
+      });
+      return;
+    }
+    
+    if (updateResult.data?.orderUpdate?.userErrors?.length > 0) {
+      logger.error(`UserErrors actualizando etiquetas en Shopify`, { 
+        userErrors: updateResult.data.orderUpdate.userErrors,
+        shopifyOrderGid
+      });
+      return;
+    }
+    
+    // ÉXITO: Log detallado del resultado
+    const updatedTags = updateResult.data?.orderUpdate?.order?.tags || [];
+    logger.info(`✅ Etiqueta actualizada exitosamente en Shopify`, { 
+      order: orderData.shopify_order_name,
+      shopifyOrderGid,
+      newTag,
+      previousTagCount: currentTags.length,
+      finalTagCount: updatedTags.length,
+      allTags: updatedTags
+    });
+    
+  } catch (error) {
+    logger.error(`Error crítico actualizando etiqueta en Shopify`, { 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      newTag, 
+      callUuid 
+    });
   }
 }
 
@@ -170,12 +341,18 @@ async function handleDTMFWebhook(request: Request) {
     updateData.call_status = "COMPLETED";
     updateData.confirmed_at = new Date();
     
-    // Actualizar nota en Shopify cuando se confirma
+    // Actualizar nota Y etiqueta en Shopify cuando se confirma
     await updateShopifyOrderNote(callUuid, orderId);
+    await updateShopifyOrderTags(callUuid, "confirmado-por-llamada");
+    
   } else if (orderStatus === "DECLINED") {
     updateData.status = "DECLINED";
     updateData.call_status = "COMPLETED";
     updateData.declined_at = new Date();
+    
+    // Actualizar etiqueta en Shopify cuando se cancela
+    await updateShopifyOrderTags(callUuid, "cancelado-por-llamada");
+    
   } else if (orderStatus === "RETRY") {
     // No cambiar el status, mantener PENDING_CALL para permitir reintento
     // call_status se mantiene como PENDING
@@ -186,6 +363,7 @@ async function handleDTMFWebhook(request: Request) {
     if (isRetry) {
       // 2 intentos fallidos = FAILED en call_status
       updateData.call_status = "FAILED";
+      await updateShopifyOrderTags(callUuid, "cod-sin-respuesta");
     } else {
       // No contesta = NO_ANSWER en call_status
       updateData.call_status = "NO_ANSWER";

@@ -256,7 +256,7 @@ export default function WhatsAppDashboard() {
 
   return (
     <Page
-      title="WhatsApp Business"
+      title="🌐 WhatsApp Business"
       subtitle="Atención automática con inteligencia artificial"
       primaryAction={
         data.assignedNumber ? {

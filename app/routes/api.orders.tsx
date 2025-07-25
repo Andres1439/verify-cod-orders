@@ -6,7 +6,6 @@ import db from "../db.server";
 import { authenticate } from "../shopify.server";
 import { decimalToString } from "../utils/decimal-utils";
 import { cleanPrice, generateTechnicalEmail, cleanTextField } from "../utils/common-utils";
-import { logger } from "../utils/logger.server";
 import { decryptToken } from "../utils/encryption.server";
 import { RateLimiter } from "../utils/rate-limiter.server";
 
@@ -100,7 +99,7 @@ async function verifyVariantExists(
   variantId: string,
 ): Promise<{ exists: boolean; price?: number; title?: string }> {
   try {
-    logger.info("Verificando variant_id en Shopify (GraphQL)", { variantId, shopDomain });
+    // Verificando variant_id en Shopify (GraphQL)
 
     // Si el ID no es un GID, construirlo
     let gid = variantId;
@@ -136,17 +135,13 @@ async function verifyVariantExists(
     );
 
     if (!response.ok) {
-      logger.warn("Respuesta no OK de Shopify GraphQL", {
-        variantId,
-        status: response.status,
-        statusText: response.statusText,
-      });
+      // Respuesta no OK de Shopify GraphQL
       return { exists: false };
     }
 
     const data = await response.json();
     if (data.errors || !data.data || !data.data.productVariant) {
-      logger.warn("Variant no encontrado en Shopify (GraphQL)", {
+      console.error("Variant no encontrado en Shopify (GraphQL)", {
         variantId,
         errors: data.errors,
       });
@@ -154,11 +149,10 @@ async function verifyVariantExists(
     }
 
     const variant = data.data.productVariant;
-    logger.info("Variant encontrado en Shopify (GraphQL)", {
+    console.error("Variant encontrado en Shopify (GraphQL)", {
       variantId,
       title: variant.title,
       price: variant.price,
-      available: variant.availableForSale,
     });
 
     return {
@@ -167,10 +161,7 @@ async function verifyVariantExists(
       title: variant.title,
     };
   } catch (error) {
-    logger.error("Error verificando variant (GraphQL)", {
-      variantId,
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+    console.error("Error verificando variant (GraphQL):", error instanceof Error ? error.message : "Unknown error");
     return { exists: false };
   }
 }
@@ -429,7 +420,7 @@ async function getShopInfoWithCountry(
   accessToken: string,
 ): Promise<{ currency: string; countryCode: string; timezone: string }> {
   try {
-    logger.info("Obteniendo información completa de la tienda", { shopDomain });
+    console.error("Obteniendo información completa de la tienda", { shopDomain });
 
     const query = `
       query {
@@ -478,7 +469,7 @@ async function getShopInfoWithCountry(
     const countryCode = shop.countryCode || shop.address?.countryCode || "PE";
     const timezone = shop.ianaTimezone || shop.timezone || "America/Lima";
 
-    logger.info("Información completa de la tienda obtenida", {
+    console.error("Información completa de la tienda obtenida", {
       shopDomain,
       currency,
       countryCode,
@@ -489,7 +480,7 @@ async function getShopInfoWithCountry(
 
     return { currency, countryCode, timezone };
   } catch (error) {
-    logger.error("Error obteniendo información de la tienda", {
+    console.error("Error obteniendo información de la tienda", {
       shopDomain,
       error: error instanceof Error ? error.message : "Unknown error",
     });
@@ -512,7 +503,7 @@ async function getShopInfoWithCountry(
         const fallbackCountry = restResult.shop?.country_code || "PE";
         const fallbackTimezone = restResult.shop?.iana_timezone || "America/Lima";
         
-        logger.info("Fallback REST API - Información obtenida", {
+        console.error("Fallback REST API - Información obtenida", {
           shopDomain,
           currency: fallbackCurrency,
           countryCode: fallbackCountry,
@@ -526,7 +517,7 @@ async function getShopInfoWithCountry(
         };
       }
     } catch (fallbackError) {
-      logger.error("Fallback también falló", {
+      console.error("Fallback también falló", {
         shopDomain,
         error: fallbackError instanceof Error ? fallbackError.message : "Unknown error",
       });
@@ -656,7 +647,7 @@ async function findExistingCustomer(
     }
 
     if (existingCustomer) {
-      logger.info("Customer existente encontrado (NO se modificará):", {
+      console.error("Customer existente encontrado (NO se modificará):", {
         requestId,
         customerId: existingCustomer.id,
         email: existingCustomer.email,
@@ -669,7 +660,7 @@ async function findExistingCustomer(
         customer: existingCustomer
       };
     } else {
-      logger.info("Customer no encontrado, se usarán datos proporcionados:", {
+      console.error("Customer no encontrado, se usarán datos proporcionados:", {
         requestId,
         email: customerData.email,
         phone: customerData.phone,
@@ -683,7 +674,7 @@ async function findExistingCustomer(
     }
 
   } catch (error) {
-    logger.error("Error buscando customer existente:", {
+    console.error("Error buscando customer existente:", {
       requestId,
       error: error instanceof Error ? error.message : "Unknown error",
     });
@@ -779,7 +770,7 @@ async function createOrUpdateCustomer(
 
     if (!response.ok) {
       const errorText = await response.text();
-      logger.error("Error creando/actualizando customer:", {
+      console.error("Error creando/actualizando customer:", {
         requestId,
         status: response.status,
         error: errorText,
@@ -790,7 +781,7 @@ async function createOrUpdateCustomer(
     const result = await response.json();
     const customer = result.customer;
 
-    logger.info("Customer creado/actualizado exitosamente:", {
+    console.error("Customer creado/actualizado exitosamente:", {
       requestId,
       customerId: customer.id,
       email: customer.email,
@@ -804,7 +795,7 @@ async function createOrUpdateCustomer(
     };
 
   } catch (error) {
-    logger.error("Error en createOrUpdateCustomer:", {
+    console.error("Error en createOrUpdateCustomer:", {
       requestId,
       error: error instanceof Error ? error.message : "Unknown error",
     });
@@ -828,7 +819,7 @@ async function createShopifyOrder({
   requestId,
 }: CreateShopifyOrderParams): Promise<ShopifyOrderResult> {
   try {
-    logger.info("Creando orden con múltiples productos", {
+    console.error("Creando orden con múltiples productos", {
       shopDomain,
       requestId,
       customerEmail: customerData.email,
@@ -846,7 +837,7 @@ async function createShopifyOrder({
     );
 
     if (!customerResult.success) {
-      logger.error("Error buscando customer existente:", {
+      console.error("Error buscando customer existente:", {
         requestId,
         error: customerResult.error,
       });
@@ -943,7 +934,7 @@ async function createShopifyOrder({
       },
     };
 
-    logger.info("Orden enviada a Shopify:", {
+    console.error("Orden enviada a Shopify:", {
       requestId,
       variant_id: orderData.order.line_items[0]?.variant_id,
       quantity: orderData.order.line_items[0]?.quantity,
@@ -966,7 +957,7 @@ async function createShopifyOrder({
 
     if (!response.ok) {
       const errorText = await response.text();
-      logger.error("Error en petición a Shopify:", {
+      console.error("Error en petición a Shopify:", {
         requestId,
         status: response.status,
         statusText: response.statusText,
@@ -978,9 +969,8 @@ async function createShopifyOrder({
     const result = await response.json();
     const order = result.order;
 
-    logger.info("Orden creada exitosamente en Shopify:", {
+    console.error("Orden creada exitosamente en Shopify:", {
       requestId,
-      shopDomain,
       orderName: order.name,
       orderId: order.id,
       currency: order.currency,
@@ -1012,7 +1002,7 @@ async function createShopifyOrder({
       },
     };
   } catch (error) {
-    logger.error("Error creando orden en Shopify", {
+    console.error("Error creando orden en Shopify", {
       requestId,
       shopDomain,
       error: error instanceof Error ? error.message : "Unknown error",
@@ -1096,7 +1086,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       variant_id: extractVariantId(item.variant_id),
     }));
 
-    logger.info("=== NUEVA PETICIÓN DE ORDEN MÚLTIPLE ===", {
+    console.error("=== NUEVA PETICIÓN DE ORDEN MÚLTIPLE ===", {
       requestId,
       shopDomain,
       isMultipleProducts,
@@ -1104,7 +1094,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       timestamp: Date.now(),
     });
 
-    logger.info("Productos recibidos:", {
+    console.error("Productos recibidos:", {
       requestId,
       phone,
       products: processedProductItems.map(item => ({
@@ -1130,7 +1120,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       
       // ✅ VALIDAR QUE CADA PRECIO SEA VÁLIDO
       if (cleanedPrice <= 0) {
-        logger.error("Precio inválido en producto:", {
+        console.error("Precio inválido en producto:", {
           productName: item.product_name,
           originalPrice: item.price,
           cleanedPrice: cleanedPrice,
@@ -1158,7 +1148,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       });
     }
 
-    logger.info("Precios calculados correctamente:", {
+    console.error("Precios calculados correctamente:", {
       requestId,
       orderTotal,
       processedPrices
@@ -1174,12 +1164,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
 
     if (!shop) {
-      logger.error("Tienda no encontrada", { requestId });
+      console.error("Tienda no encontrada", { requestId });
       return json({ error: "Tienda no encontrada" }, { status: 404, headers });
     }
 
     if (!shop.access_token) {
-      logger.error("Token de acceso no disponible para la tienda", {
+      console.error("Token de acceso no disponible para la tienda", {
         requestId,
       });
       return json(
@@ -1200,7 +1190,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const shopInfo = await getShopInfoWithCountry(shop.shop_domain, realAccessToken);
     const { currency, countryCode, timezone } = shopInfo;
 
-    logger.info("Información de la tienda obtenida", {
+    console.error("Información de la tienda obtenida", {
       requestId,
       countryCode,
       currency,
@@ -1237,7 +1227,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const allErrors = [...basicErrors, ...securityErrors, ...productErrors];
 
     if (allErrors.length > 0) {
-      logger.error("Validación de seguridad falló:", {
+      console.error("Validación de seguridad falló:", {
         errors: allErrors,
         requestId,
         countryCode: countryCode,
@@ -1260,7 +1250,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // ✅ 4. CUARTO: VALIDAR QUE EL TELÉFONO CON CÓDIGO SEA CORRECTO (OPCIONAL)
     if (!validatePhoneWithCountryCode(phoneWithCountryCode)) {
-      logger.warn("Teléfono con código de país no válido después de procesar", {
+      console.error("Teléfono con código de país no válido después de procesar", {
         originalPhone: phone,
         phoneWithCountryCode: phoneWithCountryCode,
         countryCode: countryCode,
@@ -1269,7 +1259,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // No retornar error aquí, solo log de warning
     }
 
-    logger.info("Teléfono procesado correctamente", {
+    console.error("Teléfono procesado correctamente", {
       requestId,
       originalPhone: phone,
       phoneWithCountryCode: phoneWithCountryCode,
@@ -1286,7 +1276,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const requiredFields = shopConfig?.required_fields || {};
 
-    logger.info("Tienda encontrada:", {
+    console.error("Tienda encontrada:", {
       requestId,
       shopId: shop.id,
       requiredFields: requiredFields,
@@ -1327,7 +1317,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const cleanZip = "";
 
     // ✅ LOG DETALLADO DE QUÉ DATOS SE USARON
-    logger.info("Procesamiento de datos del cliente:", {
+    console.error("Procesamiento de datos del cliente:", {
       requestId,
       required_fields_config: requiredFields,
       provided_by_client: {
@@ -1392,7 +1382,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
       
       if (!variantCheck.exists) {
-        logger.error(`Producto ${i + 1}: Variant no existe en Shopify`, {
+        console.error(`Producto ${i + 1}: Variant no existe en Shopify`, {
           variantId: product.variant_id,
           productName: product.product_name,
           shopDomain: shop.shop_domain,
@@ -1422,7 +1412,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       orderTotalPrice += productTotal;
     }
 
-    logger.info("Productos procesados:", {
+    console.error("Productos procesados:", {
       requestId,
       productCount: processedProducts.length,
       products: processedProducts.map(p => ({
@@ -1478,7 +1468,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       ],
     }));
 
-    logger.info("Iniciando creación de orden en Shopify...", { requestId });
+    console.error("Iniciando creación de orden en Shopify...", { requestId });
 
     // ✅ CREAR ORDEN EN SHOPIFY CON MÚLTIPLES PRODUCTOS
     const shopifyResult = await createShopifyOrder({
@@ -1487,14 +1477,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       customerData,
       shippingAddress,
       lineItems,
-      currency: currency, // ✅ USAR MONEDA DE LA TIENDA
+      currency: currency, // ✅ USAR CURRENCY PASADO COMO PARÁMETRO
       note: "chatbot",
       totalPrice: orderTotalPrice, // ✅ USAR PRECIO TOTAL DE TODOS LOS PRODUCTOS
       requestId: requestId,
     });
 
     if (!shopifyResult.success || !shopifyResult.order) {
-      logger.error("Error al crear orden en Shopify:", {
+      console.error("Error al crear orden en Shopify:", {
         requestId,
         error: shopifyResult.error,
         productCount: processedProducts.length,
@@ -1527,7 +1517,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    logger.info("Orden creada exitosamente en Shopify:", {
+    console.error("Orden creada exitosamente en Shopify:", {
       requestId,
       orderName: shopifyResult.order.name,
       orderId: shopifyResult.order.id,
@@ -1592,32 +1582,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       },
     });
 
-    logger.info("OrderConfirmation creada con datos reales únicamente:", {
-      requestId,
-      id: orderConfirmation.id,
-      internal_order_number: orderConfirmation.internal_order_number,
-      shopify_order_id: shopifyOrderId,
-      shopify_order_name: shopifyOrderName,
-      status: orderConfirmation.status,
-      originalPhone: phone,
-      phoneWithCountryCode: phoneWithCountryCode,
-      countryCode: countryCode,
-      currency: currency,
-      timezone: timezone,
-      real_data_only: {
-        has_real_firstName: hasRealFirstName,
-        has_real_lastName: hasRealLastName,
-        has_real_email: hasRealEmail,
-        has_real_address: hasRealAddress,
-        has_real_city: hasRealCity,
-        has_real_province: hasRealProvince,
-        has_real_country: hasRealCountry,
-        has_real_zip: hasRealZip,
-      },
-      customer_name_saved: orderConfirmation.customer_name,
-      customer_email_saved: orderConfirmation.customer_email,
-      shopify_success: true,
-    });
+    // OrderConfirmation creada con datos reales únicamente
 
     // ✅ RESPUESTA CLARA - SOLO MOSTRAR DATOS REALES + INFORMACIÓN DE LA TIENDA
     return json(
@@ -1751,7 +1716,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       { headers },
     );
   } catch (error) {
-    logger.error("Error crítico:", error);
+    console.error("Error crítico:", error);
     return json(
       {
         error: "Error interno del servidor al crear la orden",

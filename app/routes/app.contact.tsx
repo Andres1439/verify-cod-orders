@@ -33,10 +33,10 @@ export default function ContactPage() {
   return (
     <div style={{ marginBottom: "2rem" }}>
       <Page
-        title="Contacto"
+        title="👤 Contacto"
         subtitle="Estamos aquí para ayudarte con cualquier consulta"
       >
-        <TitleBar title="Contacto" />
+        <TitleBar title="👤 Contacto" />
 
         <Layout>
           {/* Información de contacto principal */}
