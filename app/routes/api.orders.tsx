@@ -119,7 +119,7 @@ async function verifyVariantExists(
     `;
 
     const response = await fetch(
-      `https://${shopDomain}/admin/api/2025-04/graphql.json`,
+      `https://${shopDomain}/admin/api/2025-07/graphql.json`,
       {
         method: "POST",
         headers: {
@@ -432,7 +432,7 @@ async function getShopInfoWithCountry(
     `;
 
     const response = await fetch(
-      `https://${shopDomain}/admin/api/2025-04/graphql.json`,
+      `https://${shopDomain}/admin/api/2025-07/graphql.json`,
       {
         method: "POST",
         headers: {
@@ -471,7 +471,7 @@ async function getShopInfoWithCountry(
     // ✅ FALLBACK: Usar REST API
     try {
       const restResponse = await fetch(
-        `https://${shopDomain}/admin/api/2025-04/shop.json`,
+        `https://${shopDomain}/admin/api/2025-07/shop.json`,
         {
           headers: {
             "X-Shopify-Access-Token": accessToken,
@@ -590,7 +590,7 @@ async function findExistingCustomer(
     let existingCustomer = null;
     if (customerData.email) {
       const searchResponse = await fetch(
-        `https://${shopDomain}/admin/api/2025-04/customers/search.json?query=email:${encodeURIComponent(customerData.email)}`,
+        `https://${shopDomain}/admin/api/2025-07/customers/search.json?query=email:${encodeURIComponent(customerData.email)}`,
         {
           method: "GET",
           headers: {
@@ -611,7 +611,7 @@ async function findExistingCustomer(
     // Si no se encuentra por email, buscar por teléfono
     if (!existingCustomer && customerData.phone) {
       const phoneSearchResponse = await fetch(
-        `https://${shopDomain}/admin/api/2025-04/customers/search.json?query=phone:${encodeURIComponent(customerData.phone)}`,
+        `https://${shopDomain}/admin/api/2025-07/customers/search.json?query=phone:${encodeURIComponent(customerData.phone)}`,
         {
           method: "GET",
           headers: {
@@ -676,7 +676,7 @@ async function createOrUpdateCustomer(
     let existingCustomer = null;
     if (customerData.email) {
       const searchResponse = await fetch(
-        `https://${shopDomain}/admin/api/2025-04/customers/search.json?query=email:${encodeURIComponent(customerData.email)}`,
+        `https://${shopDomain}/admin/api/2025-07/customers/search.json?query=email:${encodeURIComponent(customerData.email)}`,
         {
           method: "GET",
           headers: {
@@ -722,7 +722,7 @@ async function createOrUpdateCustomer(
     if (existingCustomer) {
       // Actualizar customer existente
       response = await fetch(
-        `https://${shopDomain}/admin/api/2025-04/customers/${existingCustomer.id}.json`,
+        `https://${shopDomain}/admin/api/2025-07/customers/${existingCustomer.id}.json`,
         {
           method: "PUT",
           headers: {
@@ -735,7 +735,7 @@ async function createOrUpdateCustomer(
     } else {
       // Crear nuevo customer
       response = await fetch(
-        `https://${shopDomain}/admin/api/2025-04/customers.json`,
+        `https://${shopDomain}/admin/api/2025-07/customers.json`,
         {
           method: "POST",
           headers: {
@@ -895,7 +895,7 @@ async function createShopifyOrder({
     });
 
     const response = await fetch(
-      `https://${shopDomain}/admin/api/2025-04/orders.json`,
+      `https://${shopDomain}/admin/api/2025-07/orders.json`,
       {
         method: "POST",
         headers: {

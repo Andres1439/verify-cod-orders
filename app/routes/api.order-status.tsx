@@ -192,7 +192,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         `;
 
         const response = await fetch(
-          `https://${shopDomain}/admin/api/2025-04/graphql.json`,
+          `https://${shopDomain}/admin/api/2025-07/graphql.json`,
           {
             method: "POST",
             headers: {

@@ -6,7 +6,7 @@ import { logger } from "./logger.server";
 // ===== CONFIGURACIÓN CENTRALIZADA =====
 export const CONFIG = {
   // API Configuration
-  SHOPIFY_API_VERSION: "2025-04" as const,
+  SHOPIFY_API_VERSION: "2025-07" as const,
   
   // Limits and Timeouts
   MAX_PRODUCTS: 250,

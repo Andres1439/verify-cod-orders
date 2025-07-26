@@ -126,7 +126,7 @@ interface FormattedProduct {
 const CONFIG = {
   MAX_PRODUCTS: 250 as number,
   DEFAULT_PRODUCTS: 50 as number,
-  API_VERSION: "2025-04" as const,
+  API_VERSION: "2025-07" as const,
   CACHE_DURATION: 300 as number, // 5 minutos
 };
 
