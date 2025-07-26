@@ -1,0 +1,138 @@
+{% comment %}
+  Snippet del chatbot - Versión de Producción
+{% endcomment %}
+
+<link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet" />
+{{ 'chatbot.css' | asset_url | stylesheet_tag }}
+
+<script type="module">
+  import { createChat } from "https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js";
+
+  async function fetchChatbotConfiguration(shopDomain) {
+    // Limpiar el dominio para evitar duplicaciones
+    let cleanDomain = shopDomain;
+    if (cleanDomain && cleanDomain.endsWith('.myshopify.com')) {
+      cleanDomain = cleanDomain.replace('.myshopify.com', '');
+    }
+    
+    // Lista de dominios a probar en orden de prioridad
+    const domainVariations = [
+      'test-andres1.myshopify.com', // Tu dominio específico
+      shopDomain, // Dominio original
+      cleanDomain, // Solo el nombre
+      `${cleanDomain}.myshopify.com`, // Nombre + extensión
+    ].filter((domain, index, self) => domain && domain.trim() !== '' && self.indexOf(domain) === index);
+
+    const baseUrl = "https://cod-orders.fly.dev/api/chatbot-config";
+    
+    console.log('🔍 CHATBOT DEBUG: Iniciando búsqueda de configuración');
+    console.log('🏪 Shop Domain Original:', shopDomain);
+    console.log('🧹 Clean Domain:', cleanDomain);
+    console.log('🔄 Dominios a probar:', domainVariations);
+    
+    for (const domain of domainVariations) {
+      try {
+        const apiUrl = `${baseUrl}?shop_domain=${encodeURIComponent(domain)}`;
+        console.log(`🌐 Probando: ${apiUrl}`);
+        
+        const response = await fetch(apiUrl, {
+          method: 'GET',
+          cache: 'no-cache'
+        });
+        
+        console.log(`📡 Respuesta para ${domain}: ${response.status}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('📦 Datos recibidos:', data);
+          
+          if (data.success && data.chatbot_config) {
+            const config = {
+              bot_name: data.chatbot_config.bot_name || "Verify",
+              welcome_message: data.chatbot_config.welcome_message || "¡Hola! ¿En qué puedo ayudarte?",
+              is_active: data.chatbot_config.is_active !== false
+            };
+            
+            console.log('✅ CONFIGURACIÓN ENCONTRADA:', config);
+            console.log(`🎯 DOMINIO EXITOSO: ${domain}`);
+            return config;
+          }
+        } else {
+          console.log(`❌ Error ${response.status} para ${domain}`);
+        }
+        
+      } catch (error) {
+        console.log(`❌ Error de conexión para ${domain}:`, error.message);
+        continue;
+      }
+    }
+    
+    // Configuración por defecto
+    const defaultConfig = {
+      bot_name: "Verify",
+      welcome_message: "¡Hola! ¿En qué puedo ayudarte?",
+      is_active: true
+    };
+    
+    console.log('⚠️ USANDO CONFIGURACIÓN POR DEFECTO:', defaultConfig);
+    return defaultConfig;
+  }
+  
+  async function initializeChatbot() {
+    try {
+      const shopDomain = '{{ shop.permanent_domain }}';
+      const config = await fetchChatbotConfiguration(shopDomain);
+
+      // Solo crear el chatbot si está activo
+      if (!config.is_active) {
+        return;
+      }
+
+      // Crear chatbot con configuración obtenida
+      console.log('🚀 CREANDO CHATBOT CON CONFIGURACIÓN:');
+      console.log('📝 Bot Name:', config.bot_name);
+      console.log('💬 Welcome Message:', config.welcome_message);
+      console.log('🏪 Shop Domain:', shopDomain);
+      
+      const chatConfig = {
+        webhookUrl: window.N8N_WEBHOOK_URL || "https://n8n-wabm.onrender.com/webhook/afc49feb-3869-4849-9ccc-41d6909933a6/chat",
+        initialMessages: [config.welcome_message],
+        metadata: {
+          shopDomain: shopDomain,
+          botName: config.bot_name,
+          configTimestamp: new Date().toISOString()
+        },
+        i18n: {
+          en: {
+            title: config.bot_name,
+            subtitle: "Comienza un chat, nosotros te ayudamos.",
+            inputPlaceholder: "Escríbenos un mensaje...",
+            footer: "",
+            getStarted: "Empezar"
+          },
+        },
+      };
+      
+      console.log('⚙️ CONFIGURACIÓN FINAL DEL CHAT:', chatConfig);
+      createChat(chatConfig);
+      
+    } catch (error) {
+      console.error("Error al inicializar chatbot:", error);
+    }
+  }
+
+  // Solo incluir funciones de debug en desarrollo
+  if (window.location.hostname.includes('localhost') || window.location.search.includes('debug=true')) {
+    window.debugChatbot = {
+      test: () => fetchChatbotConfiguration('{{ shop.permanent_domain }}'),
+      reload: initializeChatbot
+    };
+  }
+
+  // Inicializar
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeChatbot);
+  } else {
+    initializeChatbot();
+  }
+</script>

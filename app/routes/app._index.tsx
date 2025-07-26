@@ -1,334 +1,446 @@
-import { useEffect } from "react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useFetcher } from "@remix-run/react";
+//app._index.tsx
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
+import db from "../db.server";
+
+import { useLoaderData } from "@remix-run/react";
 import {
   Page,
-  Layout,
   Text,
   Card,
   Button,
   BlockStack,
-  Box,
-  List,
-  Link,
+  Grid,
+  Icon,
   InlineStack,
+  Badge,
 } from "@shopify/polaris";
-import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
+import { TitleBar } from "@shopify/app-bridge-react";
+import {
+  ChatIcon,
+  ChartVerticalIcon,
+  OrderIcon,
+  PhoneIcon,
+  ProductIcon,
+  XCircleIcon,
+  CheckIcon,
+} from "@shopify/polaris-icons";
+import { encryptToken, decryptToken } from "../utils/encryption.server";
 
+// ===========================================================================
+// LOADER DEFINITIVO CON TIPOS DE TYPESCRIPT
+// ===========================================================================
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  const { shop, accessToken } = session;
 
-  return null;
-};
+  // Cifrar el accessToken antes de guardar
+  const encryptedToken = encryptToken(accessToken ?? "");
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
-  const color = ["Red", "Orange", "Yellow", "Green"][
-    Math.floor(Math.random() * 4)
-  ];
-  const response = await admin.graphql(
-    `#graphql
-      mutation populateProduct($product: ProductCreateInput!) {
-        productCreate(product: $product) {
-          product {
-            id
-            title
-            handle
-            status
-            variants(first: 10) {
-              edges {
-                node {
-                  id
-                  price
-                  barcode
-                  createdAt
-                }
-              }
-            }
-          }
-        }
-      }`,
-    {
-      variables: {
-        product: {
-          title: `${color} Snowboard`,
-        },
+  let shopData = await db.shop.findUnique({
+    where: { shop_domain: shop },
+  });
+
+  if (!shopData) {
+    shopData = await db.shop.create({
+      data: {
+        shop_domain: shop,
+        access_token: JSON.stringify(encryptedToken),
+        chatbot_configuration: { create: {} },
       },
-    },
-  );
-  const responseJson = await response.json();
+    });
+  }
 
-  const product = responseJson.data!.productCreate!.product!;
-  const variantId = product.variants.edges[0]!.node!.id!;
-
-  const variantResponse = await admin.graphql(
-    `#graphql
-    mutation shopifyRemixTemplateUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants {
-          id
-          price
-          barcode
-          createdAt
-        }
+  // Descifrar el accessToken antes de devolverlo (si es necesario)
+  let decryptedAccessToken = accessToken ?? "";
+  try {
+    if (typeof shopData.access_token === "string") {
+      const parsed = JSON.parse(shopData.access_token);
+      if (parsed.encrypted && parsed.iv && parsed.tag) {
+        decryptedAccessToken = decryptToken(parsed);
       }
-    }`,
-    {
-      variables: {
-        productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
-      },
-    },
-  );
+    }
+  } catch (e) {}
 
-  const variantResponseJson = await variantResponse.json();
-
-  return {
-    product: responseJson!.data!.productCreate!.product,
-    variant:
-      variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
-  };
+  return json({ shop: { ...shopData, access_token: decryptedAccessToken } });
 };
 
-export default function Index() {
-  const fetcher = useFetcher<typeof action>();
-
-  const shopify = useAppBridge();
-  const isLoading =
-    ["loading", "submitting"].includes(fetcher.state) &&
-    fetcher.formMethod === "POST";
-  const productId = fetcher.data?.product?.id.replace(
-    "gid://shopify/Product/",
-    "",
-  );
-
-  useEffect(() => {
-    if (productId) {
-      shopify.toast.show("Product created");
-    }
-  }, [productId, shopify]);
-  const generateProduct = () => fetcher.submit({}, { method: "POST" });
+// ===========================================================================
+// TU COMPONENTE FINAL CON TIPOS DE TYPESCRIPT
+// ===========================================================================
+export default function IndexPage() {
+  useLoaderData<typeof loader>();
 
   return (
-    <Page>
-      <TitleBar title="Remix app template">
-        <button variant="primary" onClick={generateProduct}>
-          Generate a product
-        </button>
-      </TitleBar>
-      <BlockStack gap="500">
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="500">
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">
-                    Congrats on creating a new Shopify app 🎉
+    <div style={{ marginBottom: "2rem" }}>
+      <Page>
+        <TitleBar title="Verify COD Orders" />
+        <BlockStack gap="600">
+          {/* Hero Section */}
+          <Card>
+            <div
+              style={{
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                borderRadius: "12px",
+                padding: "3rem 2rem",
+                color: "white",
+                textAlign: "center",
+              }}
+            >
+              <BlockStack gap="400">
+                <div>
+                  <Text as="h1" variant="headingXl" tone="inherit">
+                    ¡Bienvenido a Verify COD Orders! 🚀
                   </Text>
-                  <Text variant="bodyMd" as="p">
-                    This embedded app template uses{" "}
-                    <Link
-                      url="https://shopify.dev/docs/apps/tools/app-bridge"
-                      target="_blank"
-                      removeUnderline
-                    >
-                      App Bridge
-                    </Link>{" "}
-                    interface examples like an{" "}
-                    <Link url="/app/additional" removeUnderline>
-                      additional page in the app nav
-                    </Link>
-                    , as well as an{" "}
-                    <Link
-                      url="https://shopify.dev/docs/api/admin-graphql"
-                      target="_blank"
-                      removeUnderline
-                    >
-                      Admin GraphQL
-                    </Link>{" "}
-                    mutation demo, to provide a starting point for app
-                    development.
-                  </Text>
-                </BlockStack>
-                <BlockStack gap="200">
-                  <Text as="h3" variant="headingMd">
-                    Get started with products
-                  </Text>
-                  <Text as="p" variant="bodyMd">
-                    Generate a product with GraphQL and get the JSON output for
-                    that product. Learn more about the{" "}
-                    <Link
-                      url="https://shopify.dev/docs/api/admin-graphql/latest/mutations/productCreate"
-                      target="_blank"
-                      removeUnderline
-                    >
-                      productCreate
-                    </Link>{" "}
-                    mutation in our API references.
-                  </Text>
-                </BlockStack>
-                <InlineStack gap="300">
-                  <Button loading={isLoading} onClick={generateProduct}>
-                    Generate a product
-                  </Button>
-                  {fetcher.data?.product && (
-                    <Button
-                      url={`shopify:admin/products/${productId}`}
-                      target="_blank"
-                      variant="plain"
-                    >
-                      View product
-                    </Button>
-                  )}
+                  <div style={{ marginTop: "1rem" }}>
+                    <Text as="p" variant="bodyLg" tone="inherit">
+                      La solución completa para optimizar tus pedidos Contra
+                      Entrega con IA
+                    </Text>
+                  </div>
+                </div>
+
+                <InlineStack align="center" gap="400">
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <Icon source={CheckIcon} tone="inherit" />
+                    <Text as="span" variant="bodyMd" tone="inherit">
+                      Reduce devoluciones
+                    </Text>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <Icon source={CheckIcon} tone="inherit" />
+                    <Text as="span" variant="bodyMd" tone="inherit">
+                      Automatiza procesos
+                    </Text>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <Icon source={CheckIcon} tone="inherit" />
+                    <Text as="span" variant="bodyMd" tone="inherit">
+                      Mejora experiencia
+                    </Text>
+                  </div>
                 </InlineStack>
-                {fetcher.data?.product && (
-                  <>
-                    <Text as="h3" variant="headingMd">
-                      {" "}
-                      productCreate mutation
-                    </Text>
-                    <Box
-                      padding="400"
-                      background="bg-surface-active"
-                      borderWidth="025"
-                      borderRadius="200"
-                      borderColor="border"
-                      overflowX="scroll"
-                    >
-                      <pre style={{ margin: 0 }}>
-                        <code>
-                          {JSON.stringify(fetcher.data.product, null, 2)}
-                        </code>
-                      </pre>
-                    </Box>
-                    <Text as="h3" variant="headingMd">
-                      {" "}
-                      productVariantsBulkUpdate mutation
-                    </Text>
-                    <Box
-                      padding="400"
-                      background="bg-surface-active"
-                      borderWidth="025"
-                      borderRadius="200"
-                      borderColor="border"
-                      overflowX="scroll"
-                    >
-                      <pre style={{ margin: 0 }}>
-                        <code>
-                          {JSON.stringify(fetcher.data.variant, null, 2)}
-                        </code>
-                      </pre>
-                    </Box>
-                  </>
-                )}
               </BlockStack>
-            </Card>
-          </Layout.Section>
-          <Layout.Section variant="oneThird">
+            </div>
+          </Card>
+
+          {/* Quick Access Section */}
+          <Card>
             <BlockStack gap="500">
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">
-                    App template specs
-                  </Text>
-                  <BlockStack gap="200">
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Framework
-                      </Text>
-                      <Link
-                        url="https://remix.run"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        Remix
-                      </Link>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Database
-                      </Text>
-                      <Link
-                        url="https://www.prisma.io/"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        Prisma
-                      </Link>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Interface
-                      </Text>
-                      <span>
-                        <Link
-                          url="https://polaris.shopify.com"
-                          target="_blank"
-                          removeUnderline
+              <div style={{ textAlign: "center" }}>
+                <Text as="h2" variant="headingLg">
+                  🎯 Acceso Rápido
+                </Text>
+                <Text as="p" variant="bodyMd" tone="subdued">
+                  Gestiona tu negocio desde un solo lugar
+                </Text>
+              </div>
+
+              <Grid>
+                <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
+                  <Card>
+                    <div style={{ padding: "1.5rem", textAlign: "center" }}>
+                      <BlockStack gap="300">
+                        <div
+                          style={{
+                            background: "#e8f5e8",
+                            borderRadius: "50%",
+                            width: "60px",
+                            height: "60px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "0 auto",
+                          }}
                         >
-                          Polaris
-                        </Link>
-                        {", "}
-                        <Link
-                          url="https://shopify.dev/docs/apps/tools/app-bridge"
-                          target="_blank"
-                          removeUnderline
+                          <Icon source={ChatIcon} tone="success" />
+                        </div>
+                        <Text as="h3" variant="headingMd">
+                          Chatbot AI
+                        </Text>
+                        <Text as="p" variant="bodyMd" tone="subdued">
+                          Automatiza la atención al cliente 24/7
+                        </Text>
+                        <Button fullWidth variant="primary" url="/app/chatbot">
+                          Configurar
+                        </Button>
+                      </BlockStack>
+                    </div>
+                  </Card>
+                </Grid.Cell>
+
+                <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
+                  <Card>
+                    <div style={{ padding: "1.5rem", textAlign: "center" }}>
+                      <BlockStack gap="300">
+                        <div
+                          style={{
+                            background: "#e8f4fd",
+                            borderRadius: "50%",
+                            width: "60px",
+                            height: "60px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "0 auto",
+                          }}
                         >
-                          App Bridge
-                        </Link>
-                      </span>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        API
-                      </Text>
-                      <Link
-                        url="https://shopify.dev/docs/api/admin-graphql"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        GraphQL API
-                      </Link>
-                    </InlineStack>
-                  </BlockStack>
-                </BlockStack>
-              </Card>
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">
-                    Next steps
-                  </Text>
-                  <List>
-                    <List.Item>
-                      Build an{" "}
-                      <Link
-                        url="https://shopify.dev/docs/apps/getting-started/build-app-example"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        {" "}
-                        example app
-                      </Link>{" "}
-                      to get started
-                    </List.Item>
-                    <List.Item>
-                      Explore Shopify’s API with{" "}
-                      <Link
-                        url="https://shopify.dev/docs/apps/tools/graphiql-admin-api"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        GraphiQL
-                      </Link>
-                    </List.Item>
-                  </List>
-                </BlockStack>
-              </Card>
+                          <Icon source={XCircleIcon} tone="info" />
+                        </div>
+                        <Text as="h3" variant="headingMd">
+                          WhatsApp
+                        </Text>
+                        <Text as="p" variant="bodyMd" tone="subdued">
+                          Proporciona un número de WhatsApp para contacto
+                        </Text>
+                        <Button fullWidth url="/app/whatsapp">
+                          Integrar
+                        </Button>
+                      </BlockStack>
+                    </div>
+                  </Card>
+                </Grid.Cell>
+
+                <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
+                  <Card>
+                    <div style={{ padding: "1.5rem", textAlign: "center" }}>
+                      <BlockStack gap="300">
+                        <InlineStack align="center" gap="200">
+                          <div
+                            style={{
+                              background: "#fef3e8",
+                              borderRadius: "50%",
+                              width: "60px",
+                              height: "60px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              margin: "0 auto",
+                            }}
+                          >
+                            <Icon source={ProductIcon} tone="warning" />
+                          </div>
+                          <Badge tone="attention">Próximamente</Badge>
+                        </InlineStack>
+                        <Text as="h3" variant="headingMd">
+                          Productos
+                        </Text>
+                        <Text as="p" variant="bodyMd" tone="subdued">
+                          Gestiona tu catálogo de productos
+                        </Text>
+                      </BlockStack>
+                    </div>
+                  </Card>
+                </Grid.Cell>
+
+                <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
+                  <Card>
+                    <div style={{ padding: "1.5rem", textAlign: "center" }}>
+                      <BlockStack gap="300">
+                        <InlineStack align="center" gap="200">
+                          <div
+                            style={{
+                              background: "#f0e8ff",
+                              borderRadius: "50%",
+                              width: "60px",
+                              height: "60px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              margin: "0 auto",
+                            }}
+                          >
+                            <Icon source={OrderIcon} tone="magic" />
+                          </div>
+                          <Badge tone="attention">Próximamente</Badge>
+                        </InlineStack>
+                        <Text as="h3" variant="headingMd">
+                          Órdenes
+                        </Text>
+                        <Text as="p" variant="bodyMd" tone="subdued">
+                          Monitorea y gestiona tus pedidos
+                        </Text>
+                      </BlockStack>
+                    </div>
+                  </Card>
+                </Grid.Cell>
+              </Grid>
             </BlockStack>
-          </Layout.Section>
-        </Layout>
-      </BlockStack>
-    </Page>
+          </Card>
+
+          {/* Features Section */}
+          <Card>
+            <BlockStack gap="500">
+              <div style={{ textAlign: "center" }}>
+                <InlineStack align="center" gap="200">
+                  <Text as="h2" variant="headingLg">
+                    ⚡ Características Principales
+                  </Text>
+                  <Badge tone="success">Potenciado por IA</Badge>
+                </InlineStack>
+                <Text as="p" variant="bodyMd" tone="subdued">
+                  Tecnología avanzada para revolucionar tu negocio
+                </Text>
+              </div>
+
+              <Grid>
+                <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
+                  <Card>
+                    <div style={{ padding: "2rem" }}>
+                      <BlockStack gap="300">
+                        <InlineStack align="space-between">
+                          <Icon source={ChartVerticalIcon} tone="success" />
+                          <Badge tone="attention">Próximamente</Badge>
+                        </InlineStack>
+                        <Text as="h3" variant="headingMd">
+                          📊 Análisis Inteligente
+                        </Text>
+                        <Text as="p" variant="bodyMd">
+                          Obtén insights profundos sobre el rendimiento de tus
+                          operaciones COD con dashboards interactivos y reportes
+                          automatizados.
+                        </Text>
+                        <div
+                          style={{
+                            background: "#f8fffe",
+                            padding: "1rem",
+                            borderRadius: "8px",
+                            border: "1px solid #e1f5fe",
+                          }}
+                        >
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            ✓ Métricas en tiempo real ✓ Predicciones IA ✓
+                            Reportes personalizados
+                          </Text>
+                        </div>
+                      </BlockStack>
+                    </div>
+                  </Card>
+                </Grid.Cell>
+
+                <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
+                  <Card>
+                    <div style={{ padding: "2rem" }}>
+                      <BlockStack gap="300">
+                        <InlineStack align="space-between">
+                          <Icon source={ChatIcon} tone="info" />
+                          <Badge tone="success">Popular</Badge>
+                        </InlineStack>
+                        <Text as="h3" variant="headingMd">
+                          🤖 Chatbot Inteligente
+                        </Text>
+                        <Text as="p" variant="bodyMd">
+                          Automatiza respuestas, gestiona tickets y brinda
+                          soporte 24/7 con nuestro asistente virtual powered by
+                          AI.
+                        </Text>
+                        <div
+                          style={{
+                            background: "#f0f9ff",
+                            padding: "1rem",
+                            borderRadius: "8px",
+                            border: "1px solid #bfdbfe",
+                          }}
+                        >
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            ✓ Respuestas automáticas ✓ Gestión de tickets ✓
+                            Personalizable
+                          </Text>
+                        </div>
+                      </BlockStack>
+                    </div>
+                  </Card>
+                </Grid.Cell>
+
+                <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
+                  <Card>
+                    <div style={{ padding: "2rem" }}>
+                      <BlockStack gap="300">
+                        <InlineStack align="space-between">
+                          <Icon source={PhoneIcon} tone="warning" />
+                          <Badge tone="info">Activo</Badge>
+                        </InlineStack>
+                        <Text as="h3" variant="headingMd">
+                          📞 Llamadas con IA
+                        </Text>
+                        <Text as="p" variant="bodyMd">
+                          Verifica pedidos automáticamente mediante llamadas
+                          inteligentes que entienden y responden como un humano.
+                        </Text>
+                        <div
+                          style={{
+                            background: "#f0fdf4",
+                            padding: "1rem",
+                            borderRadius: "8px",
+                            border: "1px solid #bbf7d0",
+                          }}
+                        >
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            ✓ Verificación automática ✓ Voz con IA
+                          </Text>
+                        </div>
+                      </BlockStack>
+                    </div>
+                  </Card>
+                </Grid.Cell>
+
+                <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
+                  <Card>
+                    <div style={{ padding: "2rem" }}>
+                      <BlockStack gap="300">
+                        <InlineStack align="space-between">
+                          <Icon source={XCircleIcon} tone="magic" />
+                          <Badge tone="info">Activo</Badge>
+                        </InlineStack>
+                        <Text as="h3" variant="headingMd">
+                          💬 Contacto WhatsApp
+                        </Text>
+                        <Text as="p" variant="bodyMd">
+                          Permite a tus clientes contactarte directamente a
+                          través de un número de WhatsApp para consultas y
+                          verificaciones rápidas.
+                        </Text>
+                        <div
+                          style={{
+                            background: "#f0fdf4",
+                            padding: "1rem",
+                            borderRadius: "8px",
+                            border: "1px solid #bbf7d0",
+                          }}
+                        >
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            ✓ Número directo ✓ Consultas rápidas ✓ Soporte
+                            personalizado
+                          </Text>
+                        </div>
+                      </BlockStack>
+                    </div>
+                  </Card>
+                </Grid.Cell>
+              </Grid>
+            </BlockStack>
+          </Card>
+        </BlockStack>
+      </Page>
+    </div>
   );
 }

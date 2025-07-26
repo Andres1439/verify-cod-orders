@@ -1,0 +1,46 @@
+{% comment %}
+  App Embed Block para Chatbot Persistente
+  Se inyecta automáticamente en todas las páginas
+{% endcomment %}
+
+{% if block.settings.chatbot_enabled %}
+  {% render 'chatbot', 
+    theme_setting: block.settings.chatbot_theme, 
+    position_setting: block.settings.chatbot_position 
+  %}
+{% endif %}
+
+{% schema %}
+  {
+    "name": "Chatbot (Verify App)",
+    "target": "body",
+    "settings": [
+      {
+        "type": "checkbox",
+        "id": "chatbot_enabled",
+        "label": "Habilitar Chatbot",
+        "default": true
+      },
+      {
+        "type": "select",
+        "id": "chatbot_position",
+        "label": "Posición del Chatbot",
+        "options": [
+          { "label": "Inferior Derecha", "value": "bottom-right" },
+          { "label": "Inferior Izquierda", "value": "bottom-left" }
+        ],
+        "default": "bottom-right"
+      },
+      {
+        "type": "select",
+        "id": "chatbot_theme",
+        "label": "Tema del Chatbot",
+        "options": [
+          { "label": "Claro", "value": "light" },
+          { "label": "Oscuro", "value": "dark" }
+        ],
+        "default": "light"
+      }
+    ]
+  }
+{% endschema %}

@@ -1,0 +1,541 @@
+:root {
+  /* === VARIABLES PRINCIPALES === */
+  --chat--color-primary: #000000;
+  --chat--color-secondary: #2196f3;
+
+  /* Encabezado del Chat */
+  --chat--header--background: #ffffff;
+  --chat--header--color: #333;
+  --chat--header--padding: 10px 16px 10px 16px;
+  --chat--header-height: auto;
+  --chat--heading--font-size: 16px;
+
+  /* Burbujas de Mensajes */
+  --chat--message--bot--background: #f0f0f0;
+  --chat--message--bot--color: #000000;
+  --chat--message--user--background: #000000;
+  --chat--message--user--color: #ffffff;
+  --chat--border-radius: 8px;
+  --chat--message--font-size: 13px;
+  --chat--message--padding: 8px 12px;
+
+  /* Área de Entrada de Texto */
+  --chat--input--container-background: #ffffff;
+  --chat--input--text-color: #333;
+  --chat--input--send--button--color: #000000;
+  --chat--input--send--button--color-hover: #333333;
+  --chat--textarea--height: 40px;
+
+  /* Indicador de "Escribiendo..." */
+  --chat--color-typing: #555555;
+
+  /* Contenedor General del Chat */
+  --chat--window--width: 370px;
+  --chat--window--height: 550px;
+  --chat--window--border: 1px solid #d1d1d1;
+  --chat--window--border-radius: 8px;
+
+  /* Botón para Abrir/Cerrar Chat (Toggle) */
+  --chat--toggle--size: 50px;
+  --chat--toggle--background: #000000;
+  --chat--toggle--color: #ffffff;
+  --chat--toggle--hover--background: #333333;
+  --chat--toggle--border-radius: 50%;
+  --chat--toggle--active--background: var(--chat--toggle--background);
+}
+
+/* === ESTILOS GENERALES Y ANULACIONES === */
+
+.chat-window {
+  font-family: var(
+    --chat--font-family,
+    "Segoe UI",
+    Tahoma,
+    Geneva,
+    Verdana,
+    sans-serif
+  );
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  background-color: #ffffff !important;
+  width: var(--chat--window--width) !important;
+  max-height: var(--chat--window--height);
+  border-radius: var(--chat--window--border-radius) !important;
+  overflow: hidden;
+  box-sizing: border-box;
+  border: var(--chat--window--border) !important;
+  display: flex;
+  flex-direction: column;
+  /* Posicionamiento fijo */
+  position: fixed !important;
+  z-index: 1000;
+  transition: all 0.3s ease;
+
+  /* === POSICIONAMIENTO MEJORADO - CERCA DEL BOTÓN SIN TAPARLO === */
+  bottom: 52px !important; /* Punto medio: entre 30px y 75px */
+  right: 35px !important; /* 15px más a la izquierda que el botón (20px + 15px) */
+
+  /* Animación suave al abrir/cerrar */
+  transform-origin: bottom right !important;
+}
+
+/* Ajustes para el chat-layout dentro del chat-window si es necesario */
+.chat-window .chat-layout {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important; /* Evita que max-height del window lo limite internamente */
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.chat-header {
+  background-color: var(--chat--header--background) !important;
+  color: var(--chat--header--color) !important;
+  padding: var(--chat--header--padding) !important;
+  height: var(--chat--header-height) !important;
+  box-sizing: border-box;
+  border-bottom: 1px solid #e0e0e0 !important;
+  gap: 0.25rem !important;
+}
+.chat-header h1 {
+  font-size: var(--chat--heading--font-size) !important;
+  font-weight: 500;
+  margin: 0;
+}
+.chat-header p {
+  font-size: 12px !important;
+  color: #777 !important;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.chat-body {
+  background-color: #ffffff !important;
+  flex-grow: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.chat-messages-list {
+  padding: 16px;
+  margin-top: auto;
+}
+
+.chat-message {
+  max-width: 80%;
+  width: fit-content;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
+  line-height: 1.4;
+  border-radius: var(--chat--border-radius) !important;
+  font-size: var(--chat--message--font-size) !important;
+  padding: var(--chat--message--padding) !important;
+  margin-bottom: calc(var(--chat--spacing, 1rem) / 1.5);
+}
+.chat-message.chat-message-from-bot {
+  background-color: var(--chat--message--bot--background) !important;
+  color: var(--chat--message--bot--color) !important;
+  align-self: flex-start;
+}
+.chat-message.chat-message-from-user {
+  background-color: var(--chat--message--user--background) !important;
+  color: var(--chat--message--user--color) !important;
+  align-self: flex-end;
+  margin-left: auto;
+}
+.chat-message p {
+  margin: 0;
+  font-size: 1em !important;
+  line-height: inherit;
+}
+
+/* === ESTILOS PARA IMÁGENES EN LOS MENSAJES === */
+.chat-message img,
+.chat-message .chat-message-markdown img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  border-radius: calc(var(--chat--border-radius) / 2);
+}
+
+/* Normalización de Texto de n8n (Markdown) */
+.chat-message .chat-message-markdown {
+  font-size: 1em !important;
+  line-height: inherit;
+}
+.chat-message .chat-message-markdown p,
+.chat-message .chat-message-markdown li,
+.chat-message .chat-message-markdown span,
+.chat-message .chat-message-markdown div,
+.chat-message .chat-message-markdown strong,
+.chat-message .chat-message-markdown em,
+.chat-message .chat-message-markdown code {
+  font-size: 1em !important;
+  line-height: inherit;
+}
+.chat-message .chat-message-markdown h1,
+.chat-message .chat-message-markdown h2,
+.chat-message .chat-message-markdown h3,
+.chat-message .chat-message-markdown h4,
+.chat-message .chat-message-markdown h5,
+.chat-message .chat-message-markdown h6 {
+  font-size: 1.1em !important;
+  margin-top: 0.5em;
+  margin-bottom: 0.25em;
+  line-height: 1.2;
+}
+.chat-message .chat-message-markdown ul,
+.chat-message .chat-message-markdown ol {
+  padding-left: 20px;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+.chat-message .chat-message-markdown pre {
+  font-size: 0.9em !important;
+  padding: 0.5em;
+  margin: 0.5em 0;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.chat-message .chat-message-markdown pre code {
+  font-size: 1em !important;
+  background-color: transparent;
+}
+
+/* Indicador de "Escribiendo..." */
+.chat-message-typing.chat-message.chat-message-from-bot {
+  background-color: #f0f0f0 !important;
+  border-radius: 16px !important;
+  padding: 6px 10px !important;
+  width: fit-content !important;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06) !important;
+  align-self: flex-start;
+  margin-left: 0;
+  display: inline-flex !important;
+  align-items: center !important;
+  min-height: calc(6px + 6px + 6px);
+}
+.chat-message-typing .chat-message-typing-circle {
+  height: 6px !important;
+  width: 6px !important;
+  margin: 0 2px !important;
+  background-color: var(--chat--color-typing) !important;
+}
+
+/* Botones de Respuesta Rápida */
+.chat-button.quick-reply {
+  background-color: white !important;
+  color: #333 !important;
+  border: 1px solid #d0d0d0 !important;
+  border-radius: 4px !important;
+  padding: 8px 12px !important;
+  margin: 4px !important;
+  font-size: 0.85rem;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+.chat-button.quick-reply:hover {
+  border-color: var(--chat--color-secondary) !important;
+  color: var(--chat--color-secondary) !important;
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.1);
+}
+.chat-quick-replies {
+  padding: 8px 0px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+/* Pie de Página del Chat (Contenedor del Área de Input) */
+.chat-window .chat-footer {
+  border-top: none !important;
+  box-shadow: none !important;
+  background-color: #ffffff !important;
+  box-sizing: border-box;
+}
+
+/* Barra que Contiene la Píldora de Input */
+.chat-window .chat-input {
+  padding: 8px 10px;
+  border-top: none !important;
+  box-shadow: none !important;
+  background-color: #ffffff !important;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* Píldora de Input (Contenedor del Textarea y Botón Enviar) */
+.chat-window .chat-inputs {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background-color: var(--chat--input--container-background);
+  height: calc(var(--chat--textarea--height) + 4px);
+  border-radius: calc(var(--chat--textarea--height) / 2 + 2px) !important;
+  overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* Campo de Texto (Textarea) */
+.chat-window .chat-inputs textarea {
+  border: none !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  font-size: var(--chat--message--font-size) !important;
+  width: 100%;
+  height: 100%;
+  min-height: auto;
+  box-sizing: border-box;
+  line-height: 1.4;
+  padding-top: calc(
+    (
+        (var(--chat--textarea--height) + 4px) -
+          (var(--chat--message--font-size) * 1.4)
+      ) /
+      2 - 1.5px
+  );
+  padding-bottom: calc(
+    (
+        (var(--chat--textarea--height) + 4px) -
+          (var(--chat--message--font-size) * 1.4)
+      ) /
+      2 + 1.5px
+  );
+  padding-left: 15px;
+  padding-right: calc(var(--chat--textarea--height) + 10px);
+  overflow-y: hidden !important;
+  color: var(--chat--input--text-color);
+  resize: none;
+}
+.chat-window .chat-inputs textarea::placeholder {
+  color: var(--chat--input--text-color);
+  opacity: 0.7;
+}
+
+/* Contenedor de Botones dentro del Input (ej. Enviar) */
+.chat-window .chat-inputs-controls {
+  position: absolute;
+  right: 2px;
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+  height: var(--chat--textarea--height);
+  display: flex;
+  align-items: center;
+  padding-right: 4px;
+}
+
+/* Botón de Enviar */
+.chat-window .chat-input-send-button {
+  height: calc(100% - 8px);
+  width: var(--chat--textarea--height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.chat-window .chat-input-send-button svg {
+  width: 55%;
+  height: 55%;
+  fill: var(--chat--input--send--button--color);
+}
+
+/* Bloque de Bienvenida Inicial (ej. "Hi there!") */
+.chat-window .chat-get-started {
+  background-color: #f5f5f5 !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: var(--chat--border-radius, 8px) !important;
+  margin: 16px;
+  padding: 16px;
+  height: auto !important;
+  text-align: left;
+  box-sizing: border-box;
+}
+.chat-window .chat-get-started h1,
+.chat-window .chat-get-started .chat-heading {
+  font-size: 1.1rem !important;
+  font-weight: 600;
+  margin-top: 0 !important;
+  margin-bottom: 0.5rem !important;
+  color: #333;
+}
+.chat-window .chat-get-started p {
+  font-size: 0.9rem !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  color: #555;
+  line-height: 1.5;
+}
+
+/* Estilos para posición y tema */
+.chat-window.bottom-left {
+  position: fixed !important;
+  bottom: 60px !important;
+  left: 30px !important;
+  right: auto !important;
+}
+
+.chat-window.bottom-right {
+  position: fixed !important;
+  bottom: 60px !important;
+  right: 30px !important;
+  left: auto !important;
+}
+
+/* === RESPONSIVE MEJORADO PARA POSICIONAMIENTO === */
+@media (max-width: 768px) {
+  .chat-window {
+    width: 85vw !important;
+    max-width: 320px !important;
+    max-height: 70vh !important;
+    border-radius: 10px !important;
+    /* En tablets, mantener misma distancia */
+    bottom: 52px !important;
+    right: 35px !important;
+  }
+
+  .chat-window.bottom-left {
+    position: fixed !important;
+    bottom: 52px !important;
+    left: 35px !important;
+    right: auto !important;
+    top: auto !important;
+    transform: none !important;
+    margin: 0 !important;
+  }
+
+  .chat-window.bottom-right {
+    position: fixed !important;
+    bottom: 52px !important;
+    right: 35px !important;
+    left: auto !important;
+    top: auto !important;
+    transform: none !important;
+    margin: 0 !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-window {
+    width: 80vw !important;
+    max-width: 280px !important;
+    max-height: 65vh !important;
+    /* En móviles, mantener misma distancia proporcional */
+    bottom: 60px !important;
+    right: 20px !important;
+    left: 80px !important;
+    margin: 0 auto !important;
+  }
+
+  .chat-window.bottom-left {
+    bottom: 47px !important;
+    left: 35px !important;
+    left: 20px !important;
+    right: 20px !important;
+  }
+
+  .chat-window.bottom-right {
+    bottom: 47px !important;
+    right: 35px !important;
+    right: 20px !important;
+    left: 20px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .chat-window {
+    width: 75vw !important;
+    max-width: 250px !important;
+    max-height: 60vh !important;
+    /* En pantallas muy pequeñas, mantener misma distancia */
+    bottom: 42px !important;
+    right: 35px !important;
+    right: 15px !important;
+    left: 15px !important;
+  }
+
+  .chat-window.bottom-left {
+    bottom: 42px !important;
+    left: 35px !important;
+    left: 15px !important;
+    right: 15px !important;
+  }
+
+  .chat-window.bottom-right {
+    bottom: 42px !important;
+    right: 35px !important;
+    right: 15px !important;
+    left: 15px !important;
+  }
+}
+
+/* Estilos para el botón toggle del chat */
+.chat-toggle {
+  position: fixed !important;
+  z-index: 1002 !important; /* Mayor que el z-index del chat-window para estar siempre visible */
+  width: var(--chat--toggle--size) !important;
+  height: var(--chat--toggle--size) !important;
+  background-color: var(--chat--toggle--background) !important;
+  color: var(--chat--toggle--color) !important;
+  border-radius: var(--chat--toggle--border-radius) !important;
+  border: none !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2) !important;
+  transition: all 0.3s ease !important;
+}
+
+.chat-toggle:hover {
+  background-color: var(--chat--toggle--hover--background) !important;
+  transform: scale(1.05) !important;
+}
+
+.chat-toggle.active {
+  background-color: var(--chat--toggle--active--background) !important;
+}
+
+/* Posicionamiento del botón toggle */
+.chat-toggle.bottom-left {
+  bottom: 20px !important;
+  left: 20px !important;
+  right: auto !important;
+}
+
+.chat-toggle.bottom-right {
+  bottom: 20px !important;
+  right: 20px !important;
+  left: auto !important;
+}
+
+/* Ajustes responsivos para el botón toggle */
+@media (max-width: 768px) {
+  .chat-toggle {
+    width: calc(var(--chat--toggle--size) * 0.9) !important;
+    height: calc(var(--chat--toggle--size) * 0.9) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-toggle {
+    width: calc(var(--chat--toggle--size) * 0.85) !important;
+    height: calc(var(--chat--toggle--size) * 0.85) !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .chat-toggle {
+    width: calc(var(--chat--toggle--size) * 0.8) !important;
+    height: calc(var(--chat--toggle--size) * 0.8) !important;
+  }
+}

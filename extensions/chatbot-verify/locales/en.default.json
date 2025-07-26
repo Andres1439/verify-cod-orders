@@ -1,10 +1,6 @@
 {
-  "ratings": {
-    "stars": {
-      "label": "Ratings"
-    },
-    "home": {
-      "recommendationText": "Recommended Product!"
-    }
+  "chatbot": {
+    "title": "Chatbot de Soporte",
+    "description": "Asistente virtual para consultas de órdenes COD"
   }
 }

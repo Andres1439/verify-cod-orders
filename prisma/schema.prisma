@@ -9,8 +9,57 @@ generator client {
 // enough when changing adapters.
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum SubscriptionPlan {
+  FREE
+  BASIC
+  PREMIUM
+  ENTERPRISE
+}
+
+enum TicketStatus {
+  PENDING
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum OrderConfirmationStatus {
+  PENDING_CALL
+  CONFIRMED
+  DECLINED
+  NO_ANSWER
+  EXPIRED
+}
+
+enum OrderSource {
+  CHATBOT_STORE
+  WHATSAPP
+}
+
+enum CallStatus {
+  PENDING
+  COMPLETED
+  NO_ANSWER
+  FAILED
+}
+
+enum WhatsAppNumberStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  MAINTENANCE
+}
+
+enum WhatsAppNumberAssignmentStatus {
+  AVAILABLE    // Disponible para asignar
+  ASSIGNED     // Asignado a una tienda
+  RESERVED     // Reservado temporalmente
+  MAINTENANCE  // En mantenimiento
 }
 
 model Session {
@@ -30,3 +79,144 @@ model Session {
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
 }
+
+model Shop {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shop_domain           String                 @unique
+  access_token          String?
+  subscription_plan     SubscriptionPlan?      @default(BASIC)
+  created_at            DateTime               @default(now())
+  updated_at            DateTime               @updatedAt
+
+  // Relaciones
+  chatbot_configuration ChatbotConfiguration?
+  tickets               Ticket[]
+  order_confirmations   OrderConfirmation[]
+  vonage_configuration  VonageConfiguration?
+  whatsAppNumbers       WhatsAppNumber[]       @relation("ShopToWhatsAppNumbers")
+}
+
+model ChatbotConfiguration {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shop_id          String   @db.Uuid
+  bot_name         String   @default("Verify")
+  welcome_message  String   @default("Hola! Estoy aquí para ayudarte.")
+  webhook_url      String?
+  is_active        Boolean  @default(true)
+  personality      String?  @default("Chatbot amigable y conciso")
+  required_fields  Json?    @default("{\"nombre\": false, \"numero\": true, \"correo\": true, \"direccion\": false, \"ciudad\": false, \"provincia\": false, \"pais\": false}")
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+
+  @@unique([shop_id])
+}
+
+model Ticket {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shop_id        String       @db.Uuid
+  session_id     String?
+  customer_email String
+  subject        String
+  message        String
+  status         TicketStatus @default(PENDING)
+  agent_id       String?
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+  assigned_at    DateTime?
+  resolved_at    DateTime?
+  closed_at      DateTime?
+  customerName   String?
+  customerPhone  String?
+  shopDomain     String?
+
+  shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+}
+
+model OrderConfirmation {
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shop_id               String                  @db.Uuid
+  internal_order_number String
+  shopify_order_id      String?
+  shopify_order_name    String?
+  customer_phone        String
+  customer_name         String?
+  customer_email        String?
+  order_items           Json
+  order_total           Decimal                 @db.Decimal(10, 2)
+  shipping_address      Json?
+  source                OrderSource
+  status                OrderConfirmationStatus @default(PENDING_CALL)
+  vonage_call_uuid      String?
+  dtmf_response         String?
+  call_scheduled_at     DateTime?
+  confirmed_at          DateTime?
+  declined_at           DateTime?
+  expires_at            DateTime?
+  created_at            DateTime                @default(now())
+  updated_at            DateTime                @updatedAt
+
+  shop_country_code     String?
+  shop_currency         String?
+  shop_timezone         String?
+  
+  // Campos de tracking de llamadas
+  call_status           CallStatus?             @default(PENDING)
+  call_started_at       DateTime?
+  last_event_at         DateTime?
+  
+  shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+
+  @@unique([internal_order_number, shop_id])
+  @@index([status])
+  @@index([call_scheduled_at])
+  @@index([shopify_order_name])
+  @@index([call_status])
+  @@index([vonage_call_uuid])
+}
+
+model WhatsAppNumber {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  phone_number         String               @unique
+  display_name         String?
+  business_account_id  String?              @unique
+  webhook_url          String?
+  webhook_token        String?
+  status               WhatsAppNumberStatus @default(ACTIVE)
+  assignment_status    WhatsAppNumberAssignmentStatus @default(AVAILABLE)
+  default_shop_id      String?              @db.Uuid
+  assigned_at          DateTime?
+  detection_rules      Json?
+  country_code         String               @default("BR")
+  provider             String               @default("whatsapp_business")
+  created_at           DateTime             @default(now())
+  updated_at           DateTime             @updatedAt
+
+  shop Shop? @relation("ShopToWhatsAppNumbers", fields: [default_shop_id], references: [id])
+
+  @@index([status])
+  @@index([phone_number])
+  @@index([business_account_id])
+  @@index([assignment_status])  // ← NUEVO índice
+}
+
+model VonageConfiguration {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shop_id          String   @unique @db.Uuid
+  application_id   String
+  private_key      String
+  phone_number     String
+  webhook_base_url String
+  voice_language   String   @default("es-ES")
+  voice_style      Int      @default(0)
+  call_timeout     Int      @default(30)
+  dtmf_timeout     Int      @default(15)
+  is_active        Boolean  @default(true)
+  last_used_at     DateTime?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  shop Shop @relation(fields: [shop_id], references: [id], onDelete: Cascade)
+}
+

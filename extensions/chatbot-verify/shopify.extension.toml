@@ -1,3 +1,8 @@
-name = "chatbot-verify"
+name = "chatbot"
 type = "theme"
 
+[extension_points]
+
+  [[extension_points.entry]]
+  target = "body"
+  module = "./blocks/chatbot.liquid"
