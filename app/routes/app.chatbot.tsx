@@ -543,7 +543,7 @@ export default function ChatbotPage() {
         title="💬 Chatbot AI"
         subtitle="Configuración y análisis de tu asistente virtual"
       >
-        <TitleBar title="Chatbot AI" />
+        <TitleBar title="Verify COD Orders" />
 
         <Tabs tabs={tabs} selected={activeTab} onSelect={setActiveTab}>
           <Layout>

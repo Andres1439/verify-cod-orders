@@ -29,17 +29,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // Validación estricta
     if ((!shopId && !shopDomain) || !customerEmail || !subject || !message) {
-      if (process.env.NODE_ENV !== "production") {
-        console.log("❌ [API] Faltan parámetros:", {
-          shopId: !!shopId,
-          shopDomain: !!shopDomain,
-          customerEmail: !!customerEmail,
-          customerName: !!customerName,
-          customerPhone: !!customerPhone,
-          subject: !!subject,
-          message: !!message,
-        });
-      }
       SecurityAudit.log({
         shopId: shopId || shopDomain || "unknown",
         action: "CREATE_TICKET_MISSING_PARAMS",
@@ -60,7 +49,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(customerEmail)) {
       if (process.env.NODE_ENV !== "production") {
-        console.log("❌ [API] Email inválido:", customerEmail);
+
       }
       SecurityAudit.log({
         shopId: shopId || shopDomain || "unknown",
@@ -85,7 +74,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     if (!shop) {
       if (process.env.NODE_ENV !== "production") {
-        console.log("❌ [API] Tienda no encontrada:", shopId || shopDomain);
+
       }
       SecurityAudit.log({
         shopId: shopId || shopDomain || "unknown",
@@ -102,7 +91,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    console.log("📝 [API] Creando ticket para tienda:", shop.shop_domain);
+
 
     // Crear el ticket
     const newTicket = await db.ticket.create({
@@ -137,9 +126,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const ticketShortId = newTicket.id.split("-")[0]; // Tomar parte antes del primer guión
     const ticketNumber = `TICKET-${ticketShortId}`;
 
-    console.log(
-      `✅ [API] Ticket creado: ${newTicket.id} (${ticketNumber}) para la tienda ${shop.shop_domain}`,
-    );
+
 
     SecurityAudit.log({
       shopId: shop.id,
@@ -169,7 +156,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       { headers },
     );
   } catch (error) {
-    console.error("💥 [API] Error al crear el ticket:", error);
+
 
     if (error instanceof Error) {
       if (error.message.includes("Foreign key constraint")) {
@@ -192,7 +179,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         );
       }
 
-      console.error("💥 [API] Error detallado:", error.message);
+
     }
 
     return json(

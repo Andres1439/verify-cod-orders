@@ -265,7 +265,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           shopifyError = `http_${response.status}`;
         }
       } catch (error) {
-        console.error("[Order Status] Error en Shopify:", error);
+
         shopifyError = "connection_error";
 
       }
@@ -302,7 +302,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const suggestions = [
         "Verifica que el número de orden sea correcto (ej: 1042, #1042)",
         "Asegúrate de usar el mismo teléfono con código de país del pedido",
-        "El teléfono debe incluir el código de país (ej: 51907794432 para Perú)",
+        "El teléfono debe incluir el código de país (ej: 51999999999 para Perú)",
       ];
 
       if (shopifyAttempted && shopifyError) {
@@ -332,7 +332,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }, { status: 404, headers });
     }
   } catch (error) {
-    console.error("[API Order Status] ❌ Error crítico:", error);
+
 
     return json(
       {

@@ -36,7 +36,7 @@ export default function ContactPage() {
         title="👤 Contacto"
         subtitle="Estamos aquí para ayudarte con cualquier consulta"
       >
-        <TitleBar title="👤 Contacto" />
+        <TitleBar title="Verify COD Orders" />
 
         <Layout>
           {/* Información de contacto principal */}

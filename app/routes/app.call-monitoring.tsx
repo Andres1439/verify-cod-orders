@@ -75,7 +75,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
             }));
           }
         } catch (error) {
-          console.warn(`Error procesando productos para orden ${call.internal_order_number}`);
         }
       }
 
@@ -157,7 +156,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
 
   } catch (error) {
-    console.error('Error obteniendo datos de llamadas:', error);
     return json({
       calls: [],
       stats: { total: 0, confirmed: 0, declined: 0, no_answer: 0, pending: 0 },

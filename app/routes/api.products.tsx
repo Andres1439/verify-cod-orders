@@ -254,7 +254,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         accessToken = decryptToken(parsed);
       }
     } catch (decryptError) {
-      console.error("[API Products] Error desencriptando token:", decryptError);
       // Continuar con el token original si no se puede desencriptar
     }
 
@@ -378,7 +377,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     if (!fetchResponse.ok) {
       const errorText = await fetchResponse.text();
-      console.error(`[API Products] Shopify API error: ${fetchResponse.status}`, errorText);
       
       return json(
         {
@@ -396,7 +394,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     // ✅ Verificación mejorada de errores GraphQL
     if (data.errors && data.errors.length > 0) {
-      console.error("[API Products] GraphQL errors:", data.errors);
       
       return json(
         {
@@ -436,7 +433,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
           // Validar IDs de Shopify
           if (!isValidShopifyGID(node.id)) {
-            console.warn(`[API Products] Invalid product GID: ${node.id}`);
             return null;
           }
 
@@ -447,7 +443,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 const variant = variantEdge.node;
                 
                 if (!isValidShopifyGID(variant.id)) {
-                  console.warn(`[API Products] Invalid variant GID: ${variant.id}`);
                   return null;
                 }
 
@@ -462,7 +457,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                   options: variant.selectedOptions || [],
                 };
               } catch (variantError) {
-                console.error(`[API Products] Error processing variant:`, variantError);
                 return null;
               }
             })
@@ -526,7 +520,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             graphql_product_id: node.id,
           };
         } catch (productError) {
-          console.error(`[API Products] Error processing product:`, productError);
           return null;
         }
       })
@@ -566,7 +559,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json(result, { headers });
 
   } catch (error) {
-    console.error("[API Products] Unexpected error:", error);
     
     return json(
       {

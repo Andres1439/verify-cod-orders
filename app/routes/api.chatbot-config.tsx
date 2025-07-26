@@ -44,12 +44,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       pais: false,
     };
 
-    console.log(`🔍 API DEBUG: Configuración encontrada para ${shopDomain}:`, {
-      shop_id: shop.id,
-      has_config: !!shop.chatbot_configuration,
-      config_data: shop.chatbot_configuration
-    });
-
     const chatbotConfig = shop.chatbot_configuration
       ? {
           bot_name: shop.chatbot_configuration.bot_name || "Verify",
