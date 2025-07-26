@@ -59,7 +59,7 @@ describe("Cumplimiento Oficial Shopify - Documentación 2025", () => {
   describe("Requisitos Obligatorios de Shopify App Store", () => {
     it("debería tener API version compatible (2024-07 o superior)", () => {
       // Según la documentación, debe ser 2024-07 o superior
-      expect(shopifyConfig.webhooks.api_version).toBe("2025-04");
+      expect(shopifyConfig.webhooks.api_version).toBe("2025-07");
       expect(shopifyConfig.webhooks.api_version >= "2024-07").toBe(true);
     });
 

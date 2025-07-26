@@ -81,7 +81,7 @@ describe("Validación de Estructura de Webhooks - Análisis Profundo", () => {
 
   describe("Validación de Configuración shopify.app.toml", () => {
     it("debería tener API version actualizada", () => {
-      expect(shopifyConfig).toContain("api_version = \"2025-04\"");
+      expect(shopifyConfig).toContain("api_version = \"2025-07\"");
     });
 
     it("debería tener compliance_topics configurados", () => {

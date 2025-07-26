@@ -15,9 +15,8 @@
       cleanDomain = cleanDomain.replace('.myshopify.com', '');
     }
     
-    // Lista de dominios a probar en orden de prioridad
+    // Lista de dominios a probar en orden de prioridad (dinámico para multitenda)
     const domainVariations = [
-      'test-andres1.myshopify.com', // Tu dominio específico
       shopDomain, // Dominio original
       cleanDomain, // Solo el nombre
       `${cleanDomain}.myshopify.com`, // Nombre + extensión
@@ -25,26 +24,17 @@
 
     const baseUrl = "https://cod-orders.fly.dev/api/chatbot-config";
     
-    console.log('🔍 CHATBOT DEBUG: Iniciando búsqueda de configuración');
-    console.log('🏪 Shop Domain Original:', shopDomain);
-    console.log('🧹 Clean Domain:', cleanDomain);
-    console.log('🔄 Dominios a probar:', domainVariations);
-    
     for (const domain of domainVariations) {
       try {
         const apiUrl = `${baseUrl}?shop_domain=${encodeURIComponent(domain)}`;
-        console.log(`🌐 Probando: ${apiUrl}`);
         
         const response = await fetch(apiUrl, {
           method: 'GET',
           cache: 'no-cache'
         });
         
-        console.log(`📡 Respuesta para ${domain}: ${response.status}`);
-        
         if (response.ok) {
           const data = await response.json();
-          console.log('📦 Datos recibidos:', data);
           
           if (data.success && data.chatbot_config) {
             const config = {
@@ -53,16 +43,11 @@
               is_active: data.chatbot_config.is_active !== false
             };
             
-            console.log('✅ CONFIGURACIÓN ENCONTRADA:', config);
-            console.log(`🎯 DOMINIO EXITOSO: ${domain}`);
             return config;
           }
-        } else {
-          console.log(`❌ Error ${response.status} para ${domain}`);
         }
         
       } catch (error) {
-        console.log(`❌ Error de conexión para ${domain}:`, error.message);
         continue;
       }
     }
@@ -74,7 +59,6 @@
       is_active: true
     };
     
-    console.log('⚠️ USANDO CONFIGURACIÓN POR DEFECTO:', defaultConfig);
     return defaultConfig;
   }
   
@@ -89,10 +73,6 @@
       }
 
       // Crear chatbot con configuración obtenida
-      console.log('🚀 CREANDO CHATBOT CON CONFIGURACIÓN:');
-      console.log('📝 Bot Name:', config.bot_name);
-      console.log('💬 Welcome Message:', config.welcome_message);
-      console.log('🏪 Shop Domain:', shopDomain);
       
       const chatConfig = {
         webhookUrl: window.N8N_WEBHOOK_URL || "https://n8n-wabm.onrender.com/webhook/afc49feb-3869-4849-9ccc-41d6909933a6/chat",

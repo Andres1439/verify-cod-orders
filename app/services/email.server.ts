@@ -46,7 +46,7 @@ export async function sendCustomerDataReportEmail({
 
   if (!toEmailForDelivery) {
     console.error(
-      "No hay un destinatario de email válido. Verifica tu variable MY_TEST_EMAIL en .env para desarrollo.",
+      "No hay un destinatario de email válido. Verifica tu variable MY_TEST_EMAIL en .env para desarrollo."
     );
     throw new Error("No hay un destinatario de email válido.");
   }
@@ -75,14 +75,12 @@ export async function sendCustomerDataReportEmail({
     });
 
     if (error) {
-      console.error("Error al enviar el email con Resend:", error);
       throw new Error("Fallo al enviar el email del reporte.");
     }
 
 
     return data;
   } catch (exception) {
-    console.error("Excepción en el servicio de email:", exception);
     throw exception;
   }
 }

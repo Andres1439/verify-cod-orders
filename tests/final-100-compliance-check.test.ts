@@ -14,8 +14,8 @@ describe("🎯 VERIFICACIÓN FINAL 100% CUMPLIMIENTO SHOPIFY 2025", () => {
   const appScopesContent = readFileSync(webhooksAppScopesPath, "utf-8");
 
   describe("✅ REQUISITOS CRÍTICOS SHOPIFY 2025", () => {
-    it("debe usar API version 2025-04 (OBLIGATORIO)", () => {
-      expect(shopifyConfig).toContain('api_version = "2025-04"');
+    it("debe usar API version 2025-07 (OBLIGATORIO)", () => {
+      expect(shopifyConfig).toContain('api_version = "2025-07"');
     });
 
     it("debe tener todos los webhooks de cumplimiento obligatorios", () => {
@@ -274,8 +274,8 @@ describe("🎯 VERIFICACIÓN FINAL 100% CUMPLIMIENTO SHOPIFY 2025", () => {
       expect(appUninstalledContent).toContain("orderConfirmation.deleteMany");
     });
 
-    it("CUMPLE: API version 2025-04 configurada", () => {
-      expect(shopifyConfig).toContain('api_version = "2025-04"');
+    it("CUMPLE: API version 2025-07 configurada", () => {
+      expect(shopifyConfig).toContain('api_version = "2025-07"');
     });
 
     it("CUMPLE: HTTPS y SSL configurados", () => {
@@ -311,7 +311,7 @@ describe("🎯 VERIFICACIÓN FINAL 100% CUMPLIMIENTO SHOPIFY 2025", () => {
       // Este test confirma que todos los requisitos críticos están implementados
       const criticalRequirements = [
         // API Version
-        shopifyConfig.includes('api_version = "2025-04"'),
+        shopifyConfig.includes('api_version = "2025-07"'),
         
         // Webhooks obligatorios
         shopifyConfig.includes('compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]'),

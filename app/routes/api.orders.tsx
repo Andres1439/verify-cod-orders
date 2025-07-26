@@ -119,7 +119,7 @@ async function verifyVariantExists(
     `;
 
     const response = await fetch(
-      `https://${shopDomain}/admin/api/2025-04/graphql.json`,
+      `https://${shopDomain}/admin/api/2025-07/graphql.json`,
       {
         method: "POST",
         headers: {
@@ -141,19 +141,12 @@ async function verifyVariantExists(
 
     const data = await response.json();
     if (data.errors || !data.data || !data.data.productVariant) {
-      console.error("Variant no encontrado en Shopify (GraphQL)", {
-        variantId,
-        errors: data.errors,
-      });
+
       return { exists: false };
     }
 
     const variant = data.data.productVariant;
-    console.error("Variant encontrado en Shopify (GraphQL)", {
-      variantId,
-      title: variant.title,
-      price: variant.price,
-    });
+
 
     return {
       exists: true,
@@ -161,7 +154,7 @@ async function verifyVariantExists(
       title: variant.title,
     };
   } catch (error) {
-    console.error("Error verificando variant (GraphQL):", error instanceof Error ? error.message : "Unknown error");
+
     return { exists: false };
   }
 }
@@ -420,7 +413,6 @@ async function getShopInfoWithCountry(
   accessToken: string,
 ): Promise<{ currency: string; countryCode: string; timezone: string }> {
   try {
-    console.error("Obteniendo información completa de la tienda", { shopDomain });
 
     const query = `
       query {
@@ -440,7 +432,7 @@ async function getShopInfoWithCountry(
     `;
 
     const response = await fetch(
-      `https://${shopDomain}/admin/api/2025-04/graphql.json`,
+      `https://${shopDomain}/admin/api/2025-07/graphql.json`,
       {
         method: "POST",
         headers: {
@@ -469,15 +461,6 @@ async function getShopInfoWithCountry(
     const countryCode = shop.countryCode || shop.address?.countryCode || "PE";
     const timezone = shop.ianaTimezone || shop.timezone || "America/Lima";
 
-    console.error("Información completa de la tienda obtenida", {
-      shopDomain,
-      currency,
-      countryCode,
-      timezone,
-      shopName: shop.name,
-      address: shop.address,
-    });
-
     return { currency, countryCode, timezone };
   } catch (error) {
     console.error("Error obteniendo información de la tienda", {
@@ -488,7 +471,7 @@ async function getShopInfoWithCountry(
     // ✅ FALLBACK: Usar REST API
     try {
       const restResponse = await fetch(
-        `https://${shopDomain}/admin/api/2025-04/shop.json`,
+        `https://${shopDomain}/admin/api/2025-07/shop.json`,
         {
           headers: {
             "X-Shopify-Access-Token": accessToken,
@@ -607,7 +590,7 @@ async function findExistingCustomer(
     let existingCustomer = null;
     if (customerData.email) {
       const searchResponse = await fetch(
-        `https://${shopDomain}/admin/api/2025-04/customers/search.json?query=email:${encodeURIComponent(customerData.email)}`,
+        `https://${shopDomain}/admin/api/2025-07/customers/search.json?query=email:${encodeURIComponent(customerData.email)}`,
         {
           method: "GET",
           headers: {
@@ -628,7 +611,7 @@ async function findExistingCustomer(
     // Si no se encuentra por email, buscar por teléfono
     if (!existingCustomer && customerData.phone) {
       const phoneSearchResponse = await fetch(
-        `https://${shopDomain}/admin/api/2025-04/customers/search.json?query=phone:${encodeURIComponent(customerData.phone)}`,
+        `https://${shopDomain}/admin/api/2025-07/customers/search.json?query=phone:${encodeURIComponent(customerData.phone)}`,
         {
           method: "GET",
           headers: {
@@ -674,10 +657,6 @@ async function findExistingCustomer(
     }
 
   } catch (error) {
-    console.error("Error buscando customer existente:", {
-      requestId,
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error"
@@ -697,7 +676,7 @@ async function createOrUpdateCustomer(
     let existingCustomer = null;
     if (customerData.email) {
       const searchResponse = await fetch(
-        `https://${shopDomain}/admin/api/2025-04/customers/search.json?query=email:${encodeURIComponent(customerData.email)}`,
+        `https://${shopDomain}/admin/api/2025-07/customers/search.json?query=email:${encodeURIComponent(customerData.email)}`,
         {
           method: "GET",
           headers: {
@@ -743,7 +722,7 @@ async function createOrUpdateCustomer(
     if (existingCustomer) {
       // Actualizar customer existente
       response = await fetch(
-        `https://${shopDomain}/admin/api/2025-04/customers/${existingCustomer.id}.json`,
+        `https://${shopDomain}/admin/api/2025-07/customers/${existingCustomer.id}.json`,
         {
           method: "PUT",
           headers: {
@@ -756,7 +735,7 @@ async function createOrUpdateCustomer(
     } else {
       // Crear nuevo customer
       response = await fetch(
-        `https://${shopDomain}/admin/api/2025-04/customers.json`,
+        `https://${shopDomain}/admin/api/2025-07/customers.json`,
         {
           method: "POST",
           headers: {
@@ -770,24 +749,11 @@ async function createOrUpdateCustomer(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Error creando/actualizando customer:", {
-        requestId,
-        status: response.status,
-        error: errorText,
-      });
       return { success: false, error: `HTTP ${response.status}: ${errorText}` };
     }
 
     const result = await response.json();
     const customer = result.customer;
-
-    console.error("Customer creado/actualizado exitosamente:", {
-      requestId,
-      customerId: customer.id,
-      email: customer.email,
-      phone: customer.phone,
-      action: existingCustomer ? "updated" : "created"
-    });
 
     return {
       success: true,
@@ -795,10 +761,6 @@ async function createOrUpdateCustomer(
     };
 
   } catch (error) {
-    console.error("Error en createOrUpdateCustomer:", {
-      requestId,
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error"
@@ -819,15 +781,6 @@ async function createShopifyOrder({
   requestId,
 }: CreateShopifyOrderParams): Promise<ShopifyOrderResult> {
   try {
-    console.error("Creando orden con múltiples productos", {
-      shopDomain,
-      requestId,
-      customerEmail: customerData.email,
-      lineItemsCount: lineItems.length,
-      totalPrice: totalPrice,
-      timestamp: Date.now(),
-    });
-
     // ✅ PASO 1: Buscar customer existente SIN modificarlo
     const customerResult = await findExistingCustomer(
       shopDomain,
@@ -942,7 +895,7 @@ async function createShopifyOrder({
     });
 
     const response = await fetch(
-      `https://${shopDomain}/admin/api/2025-04/orders.json`,
+      `https://${shopDomain}/admin/api/2025-07/orders.json`,
       {
         method: "POST",
         headers: {
@@ -1120,13 +1073,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       
       // ✅ VALIDAR QUE CADA PRECIO SEA VÁLIDO
       if (cleanedPrice <= 0) {
-        console.error("Precio inválido en producto:", {
-          productName: item.product_name,
-          originalPrice: item.price,
-          cleanedPrice: cleanedPrice,
-          requestId,
-        });
-
         return json(
           {
             error: "Precio del producto inválido",
@@ -1164,14 +1110,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
 
     if (!shop) {
-      console.error("Tienda no encontrada", { requestId });
+
       return json({ error: "Tienda no encontrada" }, { status: 404, headers });
     }
 
     if (!shop.access_token) {
-      console.error("Token de acceso no disponible para la tienda", {
-        requestId,
-      });
+
       return json(
         { error: "Token de acceso no disponible para la tienda" },
         { status: 400, headers },
@@ -1190,12 +1134,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const shopInfo = await getShopInfoWithCountry(shop.shop_domain, realAccessToken);
     const { currency, countryCode, timezone } = shopInfo;
 
-    console.error("Información de la tienda obtenida", {
-      requestId,
-      countryCode,
-      currency,
-      timezone,
-    });
+
 
     // ✅ 2. SEGUNDO: VALIDAR CAMPOS ESENCIALES (NOMBRE, CONTACTO, DIRECCIÓN, CORREO)
     const basicErrors = validateEssentialOrderData(body, countryCode);
@@ -1227,13 +1166,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const allErrors = [...basicErrors, ...securityErrors, ...productErrors];
 
     if (allErrors.length > 0) {
-      console.error("Validación de seguridad falló:", {
-        errors: allErrors,
-        requestId,
-        countryCode: countryCode,
-        productCount: processedProductItems.length,
-        receivedProducts: processedProductItems,
-      });
+
 
       return json(
         {
@@ -1250,21 +1183,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // ✅ 4. CUARTO: VALIDAR QUE EL TELÉFONO CON CÓDIGO SEA CORRECTO (OPCIONAL)
     if (!validatePhoneWithCountryCode(phoneWithCountryCode)) {
-      console.error("Teléfono con código de país no válido después de procesar", {
-        originalPhone: phone,
-        phoneWithCountryCode: phoneWithCountryCode,
-        countryCode: countryCode,
-        requestId,
-      });
+
       // No retornar error aquí, solo log de warning
     }
 
-    console.error("Teléfono procesado correctamente", {
-      requestId,
-      originalPhone: phone,
-      phoneWithCountryCode: phoneWithCountryCode,
-      countryCode: countryCode,
-    });
+
 
     // ✅ OBTENER CONFIGURACIÓN DE CAMPOS OBLIGATORIOS
     const shopConfig = await db.chatbotConfiguration.findUnique({
@@ -1276,11 +1199,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const requiredFields = shopConfig?.required_fields || {};
 
-    console.error("Tienda encontrada:", {
-      requestId,
-      shopId: shop.id,
-      requiredFields: requiredFields,
-    });
+
 
     const timestamp = Date.now();
     const random = Math.floor(Math.random() * 1000)
@@ -1316,32 +1235,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // ✅ ZIP FIJO VACÍO SEGÚN REQUERIMIENTO
     const cleanZip = "";
 
-    // ✅ LOG DETALLADO DE QUÉ DATOS SE USARON
-    console.error("Procesamiento de datos del cliente:", {
-      requestId,
-      required_fields_config: requiredFields,
-      provided_by_client: {
-        first_name: !!first_name && !!finalFirstName,
-        last_name: false,
-        email: !!email && !!finalEmail,
-        address1: !!address1 && !!cleanAddress1,
-        city: false,
-        province: false,
-        country: true,
-        zip: false,
-      },
-      final_values: {
-        firstName: finalFirstName || "[NO PROPORCIONADO]",
-        lastName: finalLastName || "[NO PROPORCIONADO]",
-        email: finalEmail || "[NO PROPORCIONADO]",
-        address1: cleanAddress1 || "[NO PROPORCIONADO]",
-        city: cleanCity || "[NO PROPORCIONADO]",
-        province: cleanProvince || "[NO PROPORCIONADO]",
-        country: cleanCountry || "[NO PROPORCIONADO]",
-        zip: cleanZip || "[NO PROPORCIONADO]",
-      },
-      no_automatic_generation: true,
-    });
 
     // ✅ VALIDAR QUE SOLO SE USEN DATOS REALES PARA MOSTRAR AL CLIENTE
     const hasRealFirstName = !!finalFirstName && !!first_name;
@@ -1382,12 +1275,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
       
       if (!variantCheck.exists) {
-        console.error(`Producto ${i + 1}: Variant no existe en Shopify`, {
-          variantId: product.variant_id,
-          productName: product.product_name,
-          shopDomain: shop.shop_domain,
-          requestId,
-        });
         
         return json(
           {
@@ -1412,17 +1299,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       orderTotalPrice += productTotal;
     }
 
-    console.error("Productos procesados:", {
-      requestId,
-      productCount: processedProducts.length,
-      products: processedProducts.map(p => ({
-        name: p.product_name,
-        price: p.itemPrice,
-        quantity: p.quantity,
-        total: p.totalPrice,
-      })),
-      orderTotal: orderTotalPrice,
-    });
 
     // ✅ CUSTOMER: USAR CAMPOS VACÍOS SI NO SE PROPORCIONARON
     const customerData: ShopifyCustomerData = {
@@ -1468,7 +1344,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       ],
     }));
 
-    console.error("Iniciando creación de orden en Shopify...", { requestId });
+
 
     // ✅ CREAR ORDEN EN SHOPIFY CON MÚLTIPLES PRODUCTOS
     const shopifyResult = await createShopifyOrder({
@@ -1517,11 +1393,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    console.error("Orden creada exitosamente en Shopify:", {
-      requestId,
-      orderName: shopifyResult.order.name,
-      orderId: shopifyResult.order.id,
-    });
+
 
     const shopifyOrderId = String(shopifyResult.order.id);
     const shopifyOrderName = shopifyResult.order.name;
@@ -1716,7 +1588,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       { headers },
     );
   } catch (error) {
-    console.error("Error crítico:", error);
+
     return json(
       {
         error: "Error interno del servidor al crear la orden",

@@ -5,7 +5,7 @@ import db from "../db.server";
 import { logger } from "../utils/logger.server";
 import { CallStatus, OrderConfirmationStatus } from "@prisma/client";
 
-// 🏷️ FUNCIÓN PARA ACTUALIZAR ETIQUETAS EN SHOPIFY - VERSIÓN CORREGIDA 2025-04
+// 🏷️ FUNCIÓN PARA ACTUALIZAR ETIQUETAS EN SHOPIFY - VERSIÓN CORREGIDA 2025-07
 async function updateShopifyOrderTags(callUuid: string, newTag: string) {
   try {
     logger.info(`Actualizando etiqueta en Shopify: ${newTag} para call: ${callUuid}`);
@@ -46,7 +46,7 @@ async function updateShopifyOrderTags(callUuid: string, newTag: string) {
       newTag
     });
     
-    // PASO 1: Obtener las etiquetas actuales usando API 2025-04
+    // PASO 1: Obtener las etiquetas actuales usando API 2025-07
     const getOrderQuery = `
       query GetOrder($id: ID!) {
         order(id: $id) {
@@ -56,7 +56,7 @@ async function updateShopifyOrderTags(callUuid: string, newTag: string) {
       }
     `;
     
-    const getResponse = await fetch(`https://${orderData.shop.shop_domain}/admin/api/2025-04/graphql.json`, {
+    const getResponse = await fetch(`https://${orderData.shop.shop_domain}/admin/api/2025-07/graphql.json`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -109,7 +109,7 @@ async function updateShopifyOrderTags(callUuid: string, newTag: string) {
       newTag
     });
     
-    // PASO 3: Actualizar usando orderUpdate con API 2025-04
+    // PASO 3: Actualizar usando orderUpdate con API 2025-07
     const updateMutation = `
       mutation OrderUpdate($input: OrderInput!) {
         orderUpdate(input: $input) {
@@ -125,7 +125,7 @@ async function updateShopifyOrderTags(callUuid: string, newTag: string) {
       }
     `;
     
-    const updateResponse = await fetch(`https://${orderData.shop.shop_domain}/admin/api/2025-04/graphql.json`, {
+    const updateResponse = await fetch(`https://${orderData.shop.shop_domain}/admin/api/2025-07/graphql.json`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

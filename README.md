@@ -1,41 +1,141 @@
-# Shopify App Template - Remix
+# COD Orders Verification - Shopify App
 
-This is a template for building a [Shopify app](https://shopify.dev/docs/apps/getting-started) using the [Remix](https://remix.run) framework.
+**Aplicación Shopify para verificación automática de órdenes COD (Cash on Delivery) mediante llamadas telefónicas personalizadas con confirmación DTMF.**
 
-Rather than cloning this repo, you can use your preferred package manager and the Shopify CLI with [these steps](https://shopify.dev/docs/apps/getting-started/create).
+🚀 **Estado:** Producción - 100% Cumplimiento Shopify 2025-04  
+🌐 **URL:** https://cod-orders.fly.dev/  
+📱 **Integración:** Vonage Voice API + N8N Automation + Chatbot Widget
 
-Visit the [`shopify.dev` documentation](https://shopify.dev/docs/api/shopify-app-remix) for more details on the Remix app package.
+## 🎯 Características Principales
 
-## Quick start
+### ✅ Verificación Automática de Órdenes
+- **Llamadas personalizadas** con nombre del cliente, productos y monto
+- **Confirmación DTMF** (presiona 1 para confirmar, 2 para cancelar)
+- **Sistema de reintentos** inteligente con límites configurables
+- **Actualización automática** de estados en Shopify con etiquetas
+- **Manejo de números inválidos** y detección de contestadores
 
-### Prerequisites
+### 🤖 Chatbot Personalizable
+- **Widget integrado** en tiendas Shopify
+- **Configuración por tienda** (nombre del bot, mensaje de bienvenida)
+- **Interfaz admin** para personalización completa
+- **Responsive design** adaptable a cualquier tema
 
-Before you begin, you'll need the following:
+### 📊 APIs Completas
+- **Creación de órdenes** con múltiples productos
+- **Consulta de productos** con búsqueda inteligente
+- **Estado de órdenes** con tracking completo
+- **Configuración de tickets** para soporte
 
-1. **Node.js**: [Download and install](https://nodejs.org/en/download/) it if you haven't already.
-2. **Shopify Partner Account**: [Create an account](https://partners.shopify.com/signup) if you don't have one.
-3. **Test Store**: Set up either a [development store](https://help.shopify.com/en/partners/dashboard/development-stores#create-a-development-store) or a [Shopify Plus sandbox store](https://help.shopify.com/en/partners/dashboard/managing-stores/plus-sandbox-store) for testing your app.
+### 🔐 Cumplimiento Total Shopify 2025
+- **Webhooks obligatorios** de privacidad (GDPR/CPRA)
+- **Eliminación completa** de datos en desinstalación
+- **Autenticación HMAC** robusta
+- **GraphQL API 2025-04** compatible
+- **SSL/HTTPS** configurado correctamente
 
-### Setup
+## 🛠️ Arquitectura Técnica
 
-If you used the CLI to create the template, you can skip this section.
+### Stack Tecnológico
+- **Framework:** Remix + React
+- **Base de Datos:** PostgreSQL con Prisma ORM
+- **Autenticación:** Shopify OAuth 2.0
+- **APIs:** GraphQL 2025-04 + REST
+- **Telefonía:** Vonage Voice API
+- **Automatización:** N8N Workflows
+- **Deploy:** Fly.io con Docker
+- **Testing:** Vitest + Tests exhaustivos
 
-Using yarn:
+### Componentes Principales
 
-```shell
-yarn install
+#### 🔄 Sistema de Llamadas (Vonage Integration)
+```
+api.vonage-calls.tsx     → Inicia llamadas personalizadas
+api.vonage-answer.tsx    → Maneja respuestas y genera NCCO
+api.vonage-dtmf.tsx      → Procesa confirmaciones DTMF
+api.vonage-events.tsx    → Maneja eventos de estado
 ```
 
-Using npm:
+#### 📦 APIs de Shopify
+```
+api.orders.tsx           → Creación de órdenes COD
+api.products.tsx         → Consulta de productos
+api.order-status.tsx     → Estado de órdenes
+api.tickets.tsx          → Sistema de tickets
+```
 
-```shell
+#### 🤖 Sistema de Chatbot
+```
+app.chatbot.tsx          → Interfaz de configuración admin
+api.chatbot-config.tsx   → API de configuración
+chatbot.liquid           → Widget para tiendas
+```
+
+#### 🔗 Webhooks Obligatorios
+```
+webhooks.tsx             → GDPR/CPRA compliance
+webhooks.app.uninstalled.tsx → Eliminación completa
+webhooks.app.scopes_update.tsx → Actualización de scopes
+```
+
+## ⚡ Instalación y Configuración
+
+### Prerrequisitos
+
+1. **Node.js 18+**: [Descargar e instalar](https://nodejs.org/)
+2. **Cuenta Shopify Partner**: [Crear cuenta](https://partners.shopify.com/signup)
+3. **Tienda de desarrollo**: [Crear tienda de prueba](https://help.shopify.com/en/partners/dashboard/development-stores)
+4. **Cuenta Vonage**: Para API de llamadas telefónicas
+5. **Base de datos PostgreSQL**: Local o en la nube
+6. **N8N**: Para automatización de workflows
+
+### 📋 Variables de Entorno Requeridas
+
+Crea un archivo `.env` en la raíz del proyecto:
+
+```bash
+# Shopify Configuration
+SHOPIFY_API_KEY="tu_api_key_aqui"
+SHOPIFY_API_SECRET="tu_api_secret_aqui"
+SHOPIFY_SCOPES="read_customers,read_inventory,read_orders,read_products,write_customers,write_orders"
+SHOPIFY_APP_URL="https://tu-dominio.fly.dev"
+SHOPIFY_WEBHOOK_SECRET="tu_webhook_secret_aqui"
+
+# Database
+DATABASE_URL="postgresql://usuario:password@host:5432/database"
+
+# Vonage Voice API
+VONAGE_API_KEY="tu_vonage_api_key"
+VONAGE_API_SECRET="tu_vonage_api_secret"
+VONAGE_APPLICATION_ID="tu_vonage_app_id"
+VONAGE_PRIVATE_KEY_PATH="./private.key"
+
+# Application Settings
+APP_URL="https://tu-dominio.fly.dev"
+SESSION_SECRET="tu_session_secret_muy_seguro"
+ENCRYPTION_KEY="tu_encryption_key_32_chars"
+
+# N8N Integration (opcional)
+N8N_WEBHOOK_URL="https://tu-n8n.com/webhook/cod-orders"
+```
+
+### 🚀 Instalación
+
+1. **Clonar el repositorio:**
+```bash
+git clone https://github.com/tu-usuario/verify-cod-orders.git
+cd verify-cod-orders
+```
+
+2. **Instalar dependencias:**
+```bash
 npm install
 ```
 
-Using pnpm:
-
-```shell
-pnpm install
+3. **Configurar base de datos:**
+```bash
+npx prisma generate
+npx prisma db push
 ```
 
 ### Local Development

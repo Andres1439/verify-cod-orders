@@ -6,7 +6,6 @@ import { login } from "../../shopify.server";
 
 import styles from "./styles.module.css";
 
-// ===== META FUNCTION PARA SEO =====
 export const meta: MetaFunction = () => {
   return [
     { title: "Verify COD Orders - Optimiza tus pedidos COD con IA" },

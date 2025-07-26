@@ -57,8 +57,8 @@ describe("Cumplimiento de Webhooks Shopify 2025", () => {
   });
 
   describe("Configuración de Webhooks", () => {
-    it("debería tener API version 2025-04", () => {
-      expect(shopifyConfig.webhooks.api_version).toBe("2025-04");
+    it("debería tener API version 2025-07", () => {
+      expect(shopifyConfig.webhooks.api_version).toBe("2025-07");
     });
 
     it("debería tener webhooks de cumplimiento obligatorios", () => {
