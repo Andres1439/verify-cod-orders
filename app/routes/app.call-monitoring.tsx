@@ -309,6 +309,12 @@ export default function CallMonitoring() {
             </Card>
             <Card>
               <div style={{ textAlign: 'center' }}>
+                <Text as="h3" variant="headingLg">{stats.declined}</Text>
+                <Text as="p" variant="bodySm">❌ Canceladas</Text>
+              </div>
+            </Card>
+            <Card>
+              <div style={{ textAlign: 'center' }}>
                 <Text as="h3" variant="headingLg">{stats.no_answer}</Text>
                 <Text as="p" variant="bodySm">📞 Sin respuesta</Text>
               </div>

@@ -23,7 +23,7 @@ export class SecurityAudit {
     if (process.env.NODE_ENV === 'production') {
       this.sendToSecureLogging(auditEvent);
     } else {
-      console.log('[SECURITY AUDIT]', auditEvent);
+
     }
 
     this.events.push(auditEvent);

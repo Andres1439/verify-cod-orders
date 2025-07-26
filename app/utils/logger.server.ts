@@ -43,12 +43,12 @@ class Logger {
   }
 
   info(message: string, meta?: any) {
-    console.log(this.formatMessage(LOG_LEVELS.INFO, message, meta));
+
   }
 
   debug(message: string, meta?: any) {
     if (this.isDevelopment) {
-      console.log(this.formatMessage(LOG_LEVELS.DEBUG, message, meta));
+
     }
   }
 

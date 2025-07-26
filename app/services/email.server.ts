@@ -51,7 +51,7 @@ export async function sendCustomerDataReportEmail({
     throw new Error("No hay un destinatario de email válido.");
   }
 
-  console.log(`Enviando email. Destinatario final: ${toEmailForDelivery}`);
+
 
   try {
     const { data, error } = await resend.emails.send({
@@ -79,9 +79,7 @@ export async function sendCustomerDataReportEmail({
       throw new Error("Fallo al enviar el email del reporte.");
     }
 
-    console.log(
-      `✅ Email con reporte de datos enviado exitosamente a: ${toEmailForDelivery}`,
-    );
+
     return data;
   } catch (exception) {
     console.error("Excepción en el servicio de email:", exception);

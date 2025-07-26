@@ -17,6 +17,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // 1. Buscar el registro de la tienda
         const shopRecord = await prisma.shop.findUnique({
           where: { shop_domain: shop },
+          include: {
+            tickets: true,
+            order_confirmations: true,
+            vonage_configuration: true,
+            chatbot_configuration: true,
+            whatsAppNumbers: true
+          }
         });
 
         if (!shopRecord) {
@@ -26,46 +33,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         logger.info("Tienda encontrada, iniciando eliminación completa", { 
           shop, 
-          shopId: shopRecord.id 
+          shopId: shopRecord.id,
+          ticketsCount: shopRecord.tickets.length,
+          ordersCount: shopRecord.order_confirmations.length,
+          hasVonageConfig: !!shopRecord.vonage_configuration,
+          hasChatbotConfig: !!shopRecord.chatbot_configuration,
+          whatsAppNumbersCount: shopRecord.whatsAppNumbers.length
         });
 
-        // 2. Eliminar todos los tickets de la tienda
-        const deletedTickets = await prisma.ticket.deleteMany({
-          where: { shop_id: shopRecord.id },
-        });
-        logger.info("Tickets eliminados", {
-          shop,
-          count: deletedTickets.count,
-        });
-
-        // 3. Eliminar todas las confirmaciones de órdenes
-        const deletedOrders = await prisma.orderConfirmation.deleteMany({
-          where: { shop_id: shopRecord.id },
-        });
-        logger.info("Confirmaciones de órdenes eliminadas", {
-          shop,
-          count: deletedOrders.count,
-        });
-
-        // 4. Eliminar configuración de Vonage
-        const deletedVonageConfig = await prisma.vonageConfiguration.deleteMany({
-          where: { shop_id: shopRecord.id },
-        });
-        logger.info("Configuración de Vonage eliminada", {
-          shop,
-          count: deletedVonageConfig.count,
-        });
-
-        // 5. Eliminar configuración de chatbot
-        const deletedChatbotConfig = await prisma.chatbotConfiguration.deleteMany({
-          where: { shop_id: shopRecord.id },
-        });
-        logger.info("Configuración de chatbot eliminada", {
-          shop,
-          count: deletedChatbotConfig.count,
-        });
-
-        // 6. Liberar números de WhatsApp asignados (cambiar a AVAILABLE)
+        // 1. PRIMERO: Liberar números de WhatsApp (no tienen onDelete: Cascade)
         const updatedWhatsAppNumbers = await prisma.whatsAppNumber.updateMany({
           where: { default_shop_id: shopRecord.id },
           data: {
@@ -79,7 +55,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           count: updatedWhatsAppNumbers.count,
         });
 
-        // 7. Eliminar todas las sesiones
+        // 2. Eliminar sesiones (no tienen relación con shop_id)
         const deletedSessions = await prisma.session.deleteMany({
           where: { shop: shop },
         });
@@ -88,11 +64,25 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           count: deletedSessions.count,
         });
 
-        // 7. FINALMENTE: Eliminar el registro de la tienda
+        // 3. ELIMINAR LA TIENDA - onDelete: Cascade eliminará automáticamente:
+        // - tickets (onDelete: Cascade)
+        // - order_confirmations (onDelete: Cascade) 
+        // - vonage_configuration (onDelete: Cascade)
+        // - chatbot_configuration (onDelete: Cascade)
         await prisma.shop.delete({ 
           where: { shop_domain: shop } 
         });
-        logger.info("✅ Registro de la tienda eliminado completamente", { shop });
+        
+        logger.info("✅ ELIMINACIÓN COMPLETA FINALIZADA", { 
+          shop,
+          message: "Tienda y todos los datos relacionados eliminados por onDelete: Cascade",
+          eliminatedAutomatically: [
+            "tickets",
+            "order_confirmations", 
+            "vonage_configuration",
+            "chatbot_configuration"
+          ]
+        });
       });
 
       logger.info("🎉 ELIMINACIÓN COMPLETA FINALIZADA CON ÉXITO", { shop });

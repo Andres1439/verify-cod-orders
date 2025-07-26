@@ -309,7 +309,7 @@ async function handleDTMFWebhook(request: Request) {
   switch (dtmf) {
     case "1":
       orderStatus = "CONFIRMED";
-      responseMessage = "Perfecto, tu pedido ha sido confirmado. Recibirás una confirmación por mensaje. Gracias por tu compra.";
+      responseMessage = "Perfecto, tu pedido ha sido confirmado. Gracias por tu compra.";
       break;
     case "2":
       orderStatus = "DECLINED";
@@ -320,7 +320,7 @@ async function handleDTMFWebhook(request: Request) {
       if (isRetry) {
         // Ya es el segundo intento, terminar llamada
         orderStatus = "NO_ANSWER";
-        responseMessage = "No pudimos procesar tu respuesta. Te contactaremos nuevamente para confirmar tu pedido. Gracias.";
+        responseMessage = "No pudimos procesar tu respuesta. Te puedes contactar nuevamente para solucionarlo.";
       } else {
         // Primer intento inválido - dar segunda oportunidad
         shouldRetry = true;

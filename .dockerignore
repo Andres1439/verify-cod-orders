@@ -1,3 +1,28 @@
 .cache
 build
 node_modules
+
+# Testing files
+tests/
+postman-tests/
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+
+# Development files
+.env
+.env.*
+*.log
+
+# IDE files
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+CHANGELOG.md
