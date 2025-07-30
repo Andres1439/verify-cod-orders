@@ -279,7 +279,7 @@ export default function CallMonitoring() {
 
   return (
     <Page
-      title="📞 Monitoreo de Llamadas Vonage"
+      title="📞 Monitoreo de Llamadas"
       subtitle="Dashboard en tiempo real de confirmaciones telefónicas"
       primaryAction={{
         content: "Refresh",

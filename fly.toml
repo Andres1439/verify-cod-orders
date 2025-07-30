@@ -1,0 +1,28 @@
+# fly.toml app configuration file generated for codorders on 2025-07-26T00:09:29-05:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'codorders'
+primary_region = 'bog'
+
+[env]
+  PORT = '3000'
+  SHOPIFY_APP_URL = 'https://codorders.fly.dev/'
+  SHOPIFY_API_KEY = '950673910c321ccfd22148631248c96c'
+  SCOPES = 'read_customers,read_inventory,read_orders,read_products,write_customers,write_orders'
+
+[build]
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
