@@ -25,6 +25,9 @@ import {
   ProductIcon,
   XCircleIcon,
   CheckIcon,
+  ViewIcon,
+  EmailIcon,
+  SettingsIcon,
 } from "@shopify/polaris-icons";
 import { encryptToken, decryptToken } from "../utils/encryption.server";
 
@@ -158,7 +161,7 @@ export default function IndexPage() {
               <Grid>
                 <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                   <Card>
-                    <div style={{ padding: "1.5rem", textAlign: "center" }}>
+                    <div style={{ padding: "1.5rem", textAlign: "center", height: "clamp(260px, 30vh, 300px)", display: "flex", alignItems: "center" }}>
                       <BlockStack gap="300">
                         <div
                           style={{
@@ -172,7 +175,7 @@ export default function IndexPage() {
                             margin: "0 auto",
                           }}
                         >
-                          <Icon source={ChatIcon} tone="success" />
+                          <Icon source={EmailIcon} tone="success" />
                         </div>
                         <Text as="h3" variant="headingMd">
                           Chatbot AI
@@ -190,7 +193,7 @@ export default function IndexPage() {
 
                 <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                   <Card>
-                    <div style={{ padding: "1.5rem", textAlign: "center" }}>
+                    <div style={{ padding: "1.5rem", textAlign: "center", height: "clamp(260px, 30vh, 300px)", display: "flex", alignItems: "center" }}>
                       <BlockStack gap="300">
                         <div
                           style={{
@@ -204,13 +207,13 @@ export default function IndexPage() {
                             margin: "0 auto",
                           }}
                         >
-                          <Icon source={XCircleIcon} tone="info" />
+                          <Icon source={ChatIcon} tone="info" />
                         </div>
                         <Text as="h3" variant="headingMd">
                           WhatsApp
                         </Text>
                         <Text as="p" variant="bodyMd" tone="subdued">
-                          Proporciona un número de WhatsApp para contacto
+                          Configura comunicación directa con clientes
                         </Text>
                         <Button fullWidth url="/app/whatsapp">
                           Integrar
@@ -222,31 +225,31 @@ export default function IndexPage() {
 
                 <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                   <Card>
-                    <div style={{ padding: "1.5rem", textAlign: "center" }}>
+                    <div style={{ padding: "1.5rem", textAlign: "center", height: "clamp(260px, 30vh, 300px)", display: "flex", alignItems: "center" }}>
                       <BlockStack gap="300">
-                        <InlineStack align="center" gap="200">
-                          <div
-                            style={{
-                              background: "#fef3e8",
-                              borderRadius: "50%",
-                              width: "60px",
-                              height: "60px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              margin: "0 auto",
-                            }}
-                          >
-                            <Icon source={ProductIcon} tone="warning" />
-                          </div>
-                          <Badge tone="attention">Próximamente</Badge>
-                        </InlineStack>
+                        <div
+                          style={{
+                            background: "#fef3e8",
+                            borderRadius: "50%",
+                            width: "60px",
+                            height: "60px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "0 auto",
+                          }}
+                        >
+                          <Icon source={ViewIcon} tone="warning" />
+                        </div>
                         <Text as="h3" variant="headingMd">
-                          Productos
+                          Monitoreo de llamadas
                         </Text>
                         <Text as="p" variant="bodyMd" tone="subdued">
-                          Gestiona tu catálogo de productos
+                          Supervisa y analiza las llamadas de verificación
                         </Text>
+                        <Button fullWidth url="/app/call-monitoring">
+                          Monitorear
+                        </Button>
                       </BlockStack>
                     </div>
                   </Card>
@@ -254,31 +257,31 @@ export default function IndexPage() {
 
                 <Grid.Cell columnSpan={{ xs: 6, sm: 3, md: 3, lg: 3, xl: 3 }}>
                   <Card>
-                    <div style={{ padding: "1.5rem", textAlign: "center" }}>
+                    <div style={{ padding: "1.5rem", textAlign: "center", height: "clamp(260px, 30vh, 300px)", display: "flex", alignItems: "center" }}>
                       <BlockStack gap="300">
-                        <InlineStack align="center" gap="200">
-                          <div
-                            style={{
-                              background: "#f0e8ff",
-                              borderRadius: "50%",
-                              width: "60px",
-                              height: "60px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              margin: "0 auto",
-                            }}
-                          >
-                            <Icon source={OrderIcon} tone="magic" />
-                          </div>
-                          <Badge tone="attention">Próximamente</Badge>
-                        </InlineStack>
+                        <div
+                          style={{
+                            background: "#f0e8ff",
+                            borderRadius: "50%",
+                            width: "60px",
+                            height: "60px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            margin: "0 auto",
+                          }}
+                        >
+                          <Icon source={PhoneIcon} tone="magic" />
+                        </div>
                         <Text as="h3" variant="headingMd">
-                          Órdenes
+                          Contacto
                         </Text>
                         <Text as="p" variant="bodyMd" tone="subdued">
-                          Monitorea y gestiona tus pedidos
+                          Gestiona la comunicación con tus clientes
                         </Text>
+                        <Button fullWidth url="/app/contact">
+                          Configurar
+                        </Button>
                       </BlockStack>
                     </div>
                   </Card>
@@ -305,134 +308,143 @@ export default function IndexPage() {
               <Grid>
                 <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
                   <Card>
-                    <div style={{ padding: "2rem" }}>
-                      <BlockStack gap="300">
-                        <InlineStack align="space-between">
-                          <Icon source={ChartVerticalIcon} tone="success" />
-                          <Badge tone="attention">Próximamente</Badge>
-                        </InlineStack>
-                        <Text as="h3" variant="headingMd">
-                          📊 Análisis Inteligente
-                        </Text>
-                        <Text as="p" variant="bodyMd">
-                          Obtén insights profundos sobre el rendimiento de tus
-                          operaciones COD con dashboards interactivos y reportes
-                          automatizados.
-                        </Text>
-                        <div
-                          style={{
-                            background: "#f8fffe",
+                    <div style={{ padding: "2rem", minHeight: "280px", display: "flex", alignItems: "stretch" }}>
+                      <div style={{ width: "100%" }}>
+                        <BlockStack gap="300">
+                          <InlineStack align="space-between">
+                            <Icon source={EmailIcon} tone="info" />
+                            <Badge tone="success">Popular</Badge>
+                          </InlineStack>
+                          <Text as="h3" variant="headingMd">
+                            🤖 Chatbot Inteligente
+                          </Text>
+                          <Text as="p" variant="bodyMd">
+                            Automatiza respuestas, gestiona tickets y brinda
+                            soporte 24/7 con nuestro asistente virtual powered by
+                            AI.
+                          </Text>
+                          <div
+                            style={{
+                            background: "rgb(220, 236, 243)",
+                            marginBlock: "1rem",
                             padding: "1rem",
                             borderRadius: "8px",
-                            border: "1px solid #e1f5fe",
-                          }}
-                        >
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            ✓ Métricas en tiempo real ✓ Predicciones IA ✓
-                            Reportes personalizados
-                          </Text>
-                        </div>
-                      </BlockStack>
+                            border: "1px solid rgb(175, 197, 207)",
+                            }}
+                          >
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              ✓ Respuestas automáticas ✓ Gestión de tickets ✓
+                              Personalizable
+                            </Text>
+                          </div>
+                        </BlockStack>
+                      </div>
                     </div>
                   </Card>
                 </Grid.Cell>
 
                 <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
                   <Card>
-                    <div style={{ padding: "2rem" }}>
-                      <BlockStack gap="300">
-                        <InlineStack align="space-between">
-                          <Icon source={ChatIcon} tone="info" />
-                          <Badge tone="success">Popular</Badge>
-                        </InlineStack>
-                        <Text as="h3" variant="headingMd">
-                          🤖 Chatbot Inteligente
-                        </Text>
-                        <Text as="p" variant="bodyMd">
-                          Automatiza respuestas, gestiona tickets y brinda
-                          soporte 24/7 con nuestro asistente virtual powered by
-                          AI.
-                        </Text>
-                        <div
-                          style={{
-                            background: "#f0f9ff",
+                    <div style={{ padding: "2rem", minHeight: "280px", display: "flex", alignItems: "stretch" }}>
+                      <div style={{ width: "100%" }}>
+                        <BlockStack gap="300">
+                          <InlineStack align="space-between">
+                            <Icon source={ChatIcon} tone="magic" />
+                            <Badge tone="info">Activo</Badge>
+                          </InlineStack>
+                          <Text as="h3" variant="headingMd">
+                            💬 Contacto WhatsApp
+                          </Text>
+                          <Text as="p" variant="bodyMd">
+                            Permite a tus clientes contactarte directamente a
+                            través de un número de WhatsApp para consultas y
+                            verificaciones rápidas.
+                          </Text>
+                          <div
+                            style={{
+                            background: "rgb(213, 241, 230)",
                             padding: "1rem",
                             borderRadius: "8px",
-                            border: "1px solid #bfdbfe",
-                          }}
-                        >
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            ✓ Respuestas automáticas ✓ Gestión de tickets ✓
-                            Personalizable
-                          </Text>
-                        </div>
-                      </BlockStack>
+                            border: "1px solid gb(213, 241, 230)",
+                            }}
+                          >
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              ✓ Número directo ✓ Consultas rápidas ✓ Soporte
+                              personalizado
+                            </Text>
+                          </div>
+                        </BlockStack>
+                      </div>
                     </div>
                   </Card>
                 </Grid.Cell>
 
                 <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
                   <Card>
-                    <div style={{ padding: "2rem" }}>
-                      <BlockStack gap="300">
+                    <div style={{ padding: "2rem", minHeight: "280px", display: "flex", alignItems: "stretch" }}>
+                      <div style={{ width: "100%" }}>
+                        <BlockStack gap="300">
+                          <InlineStack align="space-between">
+                            <Icon source={PhoneIcon} tone="warning" />
+                            <Badge tone="info">Activo</Badge>
+                          </InlineStack>
+                          <Text as="h3" variant="headingMd">
+                            📞 Llamadas con IA
+                          </Text>
+                          <Text as="p" variant="bodyMd">
+                            Verifica pedidos automáticamente mediante llamadas
+                            inteligentes que entienden y responden como un humano.
+                          </Text>
+                          <div
+                            style={{
+                            background: "rgb(224, 236, 196)",
+                            padding: "1rem",
+                            borderRadius: "8px",
+                            border: "1px solid rgb(212, 230, 170)",
+                            }}
+                          >
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              ✓ Verificación automática ✓ Voz con IA ✓ Personalización completa
+                            </Text>
+                          </div>
+                        </BlockStack>
+                      </div>
+                    </div>
+                  </Card>
+                </Grid.Cell>
+
+                <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
+                  <Card>
+                    <div style={{ padding: "2rem", minHeight: "280px", display: "flex", alignItems: "stretch" }}>
+                      <div style={{ width: "100%" }}>
+                        <BlockStack gap="300">
                         <InlineStack align="space-between">
-                          <Icon source={PhoneIcon} tone="warning" />
+                          <Icon source={SettingsIcon} tone="success" />
                           <Badge tone="info">Activo</Badge>
                         </InlineStack>
                         <Text as="h3" variant="headingMd">
-                          📞 Llamadas con IA
+                          🔧 Herramientas de Gestión
                         </Text>
                         <Text as="p" variant="bodyMd">
-                          Verifica pedidos automáticamente mediante llamadas
-                          inteligentes que entienden y responden como un humano.
+                          Suite completa de herramientas para personalizar tu chatbot,
+                          registrar llamadas y gestionar actualizaciones del sistema
+                          de manera eficiente.
                         </Text>
                         <div
                           style={{
-                            background: "#f0fdf4",
+                            background: "rgb(238, 207, 211)",
                             padding: "1rem",
                             borderRadius: "8px",
-                            border: "1px solid #bbf7d0",
+                            border: "1px solid rgb(221, 152, 167)",
                           }}
                         >
                           <Text as="p" variant="bodySm" tone="subdued">
-                            ✓ Verificación automática ✓ Voz con IA
+                            ✓ Personalización de chatbot ✓ Registro de llamadas ✓
+                            Actualizaciones automáticas
                           </Text>
                         </div>
-                      </BlockStack>
-                    </div>
-                  </Card>
-                </Grid.Cell>
-
-                <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 6, lg: 6, xl: 6 }}>
-                  <Card>
-                    <div style={{ padding: "2rem" }}>
-                      <BlockStack gap="300">
-                        <InlineStack align="space-between">
-                          <Icon source={XCircleIcon} tone="magic" />
-                          <Badge tone="info">Activo</Badge>
-                        </InlineStack>
-                        <Text as="h3" variant="headingMd">
-                          💬 Contacto WhatsApp
-                        </Text>
-                        <Text as="p" variant="bodyMd">
-                          Permite a tus clientes contactarte directamente a
-                          través de un número de WhatsApp para consultas y
-                          verificaciones rápidas.
-                        </Text>
-                        <div
-                          style={{
-                            background: "#f0fdf4",
-                            padding: "1rem",
-                            borderRadius: "8px",
-                            border: "1px solid #bbf7d0",
-                          }}
-                        >
-                          <Text as="p" variant="bodySm" tone="subdued">
-                            ✓ Número directo ✓ Consultas rápidas ✓ Soporte
-                            personalizado
-                          </Text>
-                        </div>
-                      </BlockStack>
+                        </BlockStack>
+                      </div>
                     </div>
                   </Card>
                 </Grid.Cell>
