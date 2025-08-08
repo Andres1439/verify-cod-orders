@@ -62,8 +62,8 @@ export default function SetupPage() {
                 🚀 Activar el Widget de Verify COD Orders
               </Text>
               
-              <Banner status="info">
-                <Text>
+              <Banner tone="info">
+                <Text as="p">
                   Para que el widget de verificación COD aparezca en tu tienda, 
                   necesitas activarlo en el editor de temas de Shopify.
                 </Text>
@@ -108,9 +108,9 @@ export default function SetupPage() {
                 </Button>
               </InlineStack>
 
-              <Banner status="success">
+              <Banner tone="success">
                 <BlockStack gap="200">
-                  <Text variant="headingMd">
+                  <Text variant="headingMd" as="h4">
                     ✅ ¿Qué sucede después?
                   </Text>
                   <List>
@@ -140,7 +140,7 @@ export default function SetupPage() {
                 <Icon source={ViewIcon} />
               </InlineStack>
               
-              <Text>
+              <Text as="p">
                 Una vez activado el widget, puedes:
               </Text>
               
@@ -166,7 +166,7 @@ export default function SetupPage() {
                 <Icon source={CheckIcon} />
               </InlineStack>
               
-              <Text>
+              <Text as="p">
                 El sistema también incluye:
               </Text>
               
