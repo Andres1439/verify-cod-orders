@@ -3,7 +3,7 @@
 client_id = "950673910c321ccfd22148631248c96c"
 name = "Verify COD Orders"
 handle = "verify-codorders"
-application_url = "https://codorders.fly.dev"
+application_url = "https://limousines-russia-formed-camcorder.trycloudflare.com"
 embedded = true
 
 [build]
@@ -23,7 +23,7 @@ api_version = "2025-07"
 scopes = "read_customers,read_inventory,read_orders,read_products,write_customers,write_orders"
 
 [auth]
-redirect_urls = ["https://codorders.fly.dev/auth/callback", "https://codorders.fly.dev/auth/shopify/callback", "https://codorders.fly.dev/api/auth/callback"]
+redirect_urls = ["https://limousines-russia-formed-camcorder.trycloudflare.com/auth/callback", "https://limousines-russia-formed-camcorder.trycloudflare.com/auth/shopify/callback", "https://limousines-russia-formed-camcorder.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

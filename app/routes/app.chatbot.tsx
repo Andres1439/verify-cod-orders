@@ -24,6 +24,7 @@ import {
   Modal,
   Badge,
   Checkbox,
+  List,
 } from "@shopify/polaris";
 import {
   SearchIcon,
@@ -189,6 +190,7 @@ export const loader = async ({ request }: { request: Request }) => {
     chatbotConfig,
     tickets: formattedTickets,
     pagination,
+    shop: { shop_domain: session.shop },
   });
 };
 
@@ -365,11 +367,14 @@ type LoaderData = {
     hasNext: boolean;
     hasPrev: boolean;
   };
+  shop: {
+    shop_domain: string;
+  };
 };
 
 export default function ChatbotPage() {
   // Obtener datos del loader
-  const { chatbotConfig, tickets } = useLoaderData<LoaderData>();
+  const { chatbotConfig, tickets, shop } = useLoaderData<LoaderData>();
   const navigation = useNavigation();
   const submit = useSubmit();
   const actionData = useActionData<any>();
@@ -396,6 +401,9 @@ export default function ChatbotPage() {
   // Estados para el modal
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Estados para el modal de setup
+  const [setupModalActive, setSetupModalActive] = useState(false);
 
   const tabs = [
     {
@@ -537,6 +545,15 @@ export default function ChatbotPage() {
     Boolean,
   );
 
+  // NUEVO: Función para abrir el theme editor
+  const handleOpenThemeEditor = () => {
+    const apiKey = '950673910c321ccfd22148631248c96c'; // Tu API key del shopify.app.toml
+    const themeEditorUrl = `https://${shop.shop_domain}/admin/themes/current/editor?context=apps&template=index&activateAppId=${apiKey}/chatbot-verify&target=body`;
+    
+    window.open(themeEditorUrl, '_blank', 'noopener,noreferrer');
+    setSetupModalActive(false); // Cerrar modal después de abrir
+  };
+
   return (
     <div style={{ marginBottom: "2rem" }}>
       <Page
@@ -549,8 +566,120 @@ export default function ChatbotPage() {
           <Layout>
             {activeTab === 0 && (
               <>
+                {/* NUEVO: Modal de Setup del Widget */}
+                <Modal
+                  open={setupModalActive}
+                  onClose={() => setSetupModalActive(false)}
+                  title="🚀 Activar Widget en tu Tienda"
+                  primaryAction={{
+                    content: 'Abrir Editor de Temas',
+                    onAction: handleOpenThemeEditor,
+                  }}
+                  secondaryActions={[
+                    {
+                      content: 'Cerrar',
+                      onAction: () => setSetupModalActive(false),
+                    },
+                  ]}
+                >
+                  <Modal.Section>
+                    <BlockStack gap="400">
+                      <Banner tone="info">
+                        <Text as="p">
+                          Para que el chatbot aparezca en tu tienda, necesitas activarlo en el editor de temas de Shopify.
+                        </Text>
+                      </Banner>
+
+                      <BlockStack gap="300">
+                        <Text variant="headingMd" as="h3">
+                          📋 Instrucciones paso a paso:
+                        </Text>
+                        
+                        <List type="number">
+                          <List.Item>
+                            Haz clic en "Abrir Editor de Temas" arriba
+                          </List.Item>
+                          <List.Item>
+                            En el editor, busca "App embeds" en el panel izquierdo
+                          </List.Item>
+                          <List.Item>
+                            Encuentra "Chatbot (Verify App)" y actívalo
+                          </List.Item>
+                          <List.Item>
+                            Configura la posición y tema según tus preferencias
+                          </List.Item>
+                          <List.Item>
+                            Haz clic en "Guardar" para aplicar los cambios
+                          </List.Item>
+                        </List>
+                      </BlockStack>
+
+                      <Banner tone="warning">
+                        <BlockStack gap="200">
+                          <Text variant="headingMd" as="h4">
+                            🎥 Video Tutorial
+                          </Text>
+                          <Text as="p">
+                            Puedes ver cómo activar el widget paso a paso en este video tutorial (minutos 1:40 - 2:25):
+                          </Text>
+                          <Button
+                            variant="plain"
+                            onClick={() => window.open('https://www.youtube.com/watch?v=euV1vlyAzAM&t=100s', '_blank', 'noopener,noreferrer')}
+                          >
+                            Ver Video Tutorial en YouTube →
+                          </Button>
+                        </BlockStack>
+                      </Banner>
+
+                      <Banner tone="success">
+                        <BlockStack gap="200">
+                          <Text variant="headingMd" as="h4">
+                            ✅ ¿Qué sucede después?
+                          </Text>
+                          <List>
+                            <List.Item>
+                              El widget aparecerá en todas las páginas de tu tienda
+                            </List.Item>
+                            <List.Item>
+                              Los clientes podrán hacer consultas sobre sus pedidos COD
+                            </List.Item>
+                            <List.Item>
+                              Puedes personalizar el mensaje desde esta página
+                            </List.Item>
+                          </List>
+                        </BlockStack>
+                      </Banner>
+                    </BlockStack>
+                  </Modal.Section>
+                </Modal>
+
                 <Layout.Section>
                   <BlockStack gap="400">
+                    {/* NUEVO: Botón elegante para abrir modal de setup */}
+                    <Card>
+                      <BlockStack gap="300">
+                        <InlineStack align="space-between" blockAlign="center">
+                          <BlockStack gap="200">
+                            <Text variant="headingMd" as="h3">
+                              🎨 Widget de Tienda
+                            </Text>
+                            <Text tone="subdued" as="p">
+                              Activa el chatbot en tu tienda para que los clientes puedan interactuar con él
+                            </Text>
+                          </BlockStack>
+                          
+                          <Button
+                            variant="primary"
+                            size="large"
+                            onClick={() => setSetupModalActive(true)}
+                            icon={SettingsIcon}
+                          >
+                            Implementar Widget
+                          </Button>
+                        </InlineStack>
+                      </BlockStack>
+                    </Card>
+
                     <Banner
                       title={`Chatbot ${config.is_active ? "activo" : "inactivo"}`}
                       icon={config.is_active ? CheckIcon : InfoIcon}
